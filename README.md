@@ -1,0 +1,192 @@
+<div align="center">
+
+# Sonora
+
+[![Build](https://img.shields.io/github/actions/workflow/status/nolight132/sonora/release.yml)](https://github.com/nolight132/sonora/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/nolight132/sonora)](./COPYING)
+![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsonora-stats.nolight.dev%2Fcount&query=%24.count&label=Installs&color=blue)
+\
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/a8N8Tx23rV)
+[![Matrix](https://img.shields.io/badge/Matrix-000000?style=for-the-badge&logo=matrix&logoColor=white)](https://matrix.to/#/#sonora:nolight.dev)
+
+### A native music streaming client, built with Rust and GPUI
+
+Stream Spotify, YouTube Music, and local files all in one **native** app
+</div>
+
+<div align="center">
+    <table>
+      <tr>
+        <td colspan="2">
+          <img width="1602" height="992" alt="image" src="https://github.com/user-attachments/assets/d0357517-a28d-4c90-abd1-4f3e8d8cdedc" />
+        </td>
+      </tr>
+      <tr>
+        <td width="50%">
+          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/70979e4c-261f-4561-b671-04d28a9971a9" />
+        </td>
+        <td width="50%">
+          <img width="1576" height="945" alt="image" src="https://github.com/user-attachments/assets/ff3b4284-25e2-4487-bf9b-60d8f56dc44d" />
+        </td>
+      </tr>
+    </table>
+</div>
+<div align="center">
+    <sub>
+      Adaptive themes are optional. Everything is (or will be) customizable.
+    </sub>
+</div>
+
+## Features
+
+- **Spotify**, **YouTube**, and local playback
+- Library management within supported providers
+- Gapless playback
+- Audio normalization
+- Synced/karaoke lyrics
+- Romanization
+- Cross-platform support
+- Custom themes
+
+## Install
+
+### macOS
+
+Install with [Brew](https://brew.sh/):
+
+```sh
+brew install --cask nolight132/tap/sonora
+```
+
+After installing (thanks Apple):
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Sonora.app
+```
+
+### Linux
+
+#### Arch
+
+Install from the AUR with your AUR helper of choice:
+
+```sh
+yay -S sonora-bin
+```
+
+`sonora-bin` installs the prebuilt release binary. `sonora` builds the same version from source
+instead, which takes a while on a Rust and GPUI tree but links against your own system libraries:
+
+```sh
+yay -S sonora
+```
+
+Either `pipewire-alsa` or `pulseaudio-alsa` is required, matching your sound server.
+
+#### Flatpak
+
+Add the Sonora repository once; it pulls the runtime from Flathub and updates with `flatpak update`:
+
+```sh
+flatpak install --user https://nolight132.github.io/sonora/sonora.flatpakref
+```
+
+Every release also attaches a standalone `.flatpak` bundle for x86_64 and aarch64 on
+[Releases](https://github.com/nolight132/sonora/releases/latest), for installing without a remote.
+
+### Nix
+
+Just use the flake in the project root:
+
+```sh
+inputs.sonora.packages.${system}.default
+```
+
+The flake installs the latest tagged release binary.
+
+### Windows
+
+#### Installer
+
+Download and run the [installer](https://github.com/nolight132/sonora/releases/latest/download/Sonora-Setup.exe).
+
+#### Portable
+
+Download the latest `windows-msvc.exe` for your architecture from [Releases](https://github.com/nolight132/sonora/releases/latest).
+
+## Community
+
+Feel free to join our [Discord](https://discord.gg/a8N8Tx23rV) server and [Matrix](https://matrix.to/#/#sonora:nolight.dev) space.
+Discord is the primary one, but we do have a Matrix bridge.
+
+## AI policy
+
+We have nothing against the usage of LLMs in the project — in fact, we use them ourselves.
+We believe that AI can speed up development in a lot of meaningful ways and be a useful
+tool for learning new concepts. We have also found it particularly helpful for
+contributing to substantial codebases such as GPUI and librespot, where it has helped
+us quickly locate the relevant parts of the code.
+
+**However**, using AI cannot act as an excuse for failing to
+understand, review, and test the changes proposed. Furthermore, we expect communication
+with a real person, not a computer. This includes but is not limited to PR/issue text
+generation, comments in discussions, etc. A summary of changes can be generated
+and does not need to be disclosed explicitly, but the reasoning and motivation
+behind a change must come from the contributor and reflect their own understanding.
+
+AI-assisted proofreading and translation of human-written text are permitted.
+
+## Translations
+
+<!-- i18n:start -->
+
+| Language                     | Translated | Coverage |
+| ---------------------------- | ---------- | -------- |
+| English (`en-US`)            | 514/514    | 100%     |
+| Deutsch (`de`)               | 485/514    | 94%      |
+| Español (`es`)               | 500/514    | 97%      |
+| Français (`fr`)              | 479/514    | 93%      |
+| Italiano (`it`)              | 479/514    | 93%      |
+| 日本語 (`ja`)                | 500/514    | 97%      |
+| Русский (`ru`)               | 486/514    | 95%      |
+| Українська (`uk`)            | 486/514    | 95%      |
+| Polski (`pl`)                | 487/514    | 95%      |
+| Português (Brasil) (`pt-BR`) | 500/514    | 97%      |
+
+<!-- i18n:end -->
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=nolight132%2Fsonora&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=nolight132/sonora&type=date&theme=dark&legend=top-left&sealed_token=sKtwC7g5T3J-eTji4XSzjR4r9w8t_BgIlXM2-fD5yXkV_KsNB-ESSvKSr4ofwrKLLXfNR77vlM4cATffoz3kTnAEPcjrQ-BprKQSiv0oriZSvSa-yBUsKfNo2AXAuXytEo5jBqlhhJJaotggp9S0CN-lNuWAw-45pP2YrsNKALFn7P1AX-eCi5da2baK" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=nolight132/sonora&type=date&legend=top-left&sealed_token=sKtwC7g5T3J-eTji4XSzjR4r9w8t_BgIlXM2-fD5yXkV_KsNB-ESSvKSr4ofwrKLLXfNR77vlM4cATffoz3kTnAEPcjrQ-BprKQSiv0oriZSvSa-yBUsKfNo2AXAuXytEo5jBqlhhJJaotggp9S0CN-lNuWAw-45pP2YrsNKALFn7P1AX-eCi5da2baK" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=nolight132/sonora&type=date&legend=top-left&sealed_token=sKtwC7g5T3J-eTji4XSzjR4r9w8t_BgIlXM2-fD5yXkV_KsNB-ESSvKSr4ofwrKLLXfNR77vlM4cATffoz3kTnAEPcjrQ-BprKQSiv0oriZSvSa-yBUsKfNo2AXAuXytEo5jBqlhhJJaotggp9S0CN-lNuWAw-45pP2YrsNKALFn7P1AX-eCi5da2baK" />
+  </picture>
+</a>
+
+## Credits
+
+Sonora is built with the help of some incredible open-source projects, including:
+
+- [Zed](https://github.com/zed-industries/zed) — a wonderful editor (~~ab~~)used by all core team members. Conveniently provides `gpui` — their native Rust rendering stack.
+- [librespot](https://github.com/librespot-org/librespot) — Spotify playback and library integration.
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — certain YouTube ideas implemented in [ytmusic-rs](https://github.com/nolight132/ytmusic-rs). :)
+
+## License
+
+Copyright (C) 2026 Sonora Contributors.
+
+Sonora is free software, released under the [GNU General Public License version
+3 or later](COPYING).
+
+Sonora is an unofficial client and is not affiliated with, endorsed by, or
+sponsored by Spotify AB.
+
+The binary also embeds the [Inter](https://github.com/rsms/inter) typeface (SIL
+Open Font License 1.1) and four interchangeable icon sets:
+[Lucide](https://lucide.dev) (ISC), [Iconoir](https://iconoir.com) (MIT),
+[Remix Icon](https://remixicon.com) 4.8.0 (Apache 2.0) and the
+[Solar](https://www.figma.com/community/file/1166831539721848736) Linear set
+(CC BY 4.0, by 480 Design). Each pack keeps its licence beside its files in
+`assets/icons`. `THIRD-PARTY.md` lists every bundled dependency.

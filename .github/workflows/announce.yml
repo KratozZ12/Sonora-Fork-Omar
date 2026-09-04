@@ -1,0 +1,61 @@
+name: Announce release on Discord
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to announce
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send release announcement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          release="$(gh release view "$RELEASE_TAG" --repo "$REPO" --json name,body,url)"
+          jq -n \
+            --arg username "Sonora Releases" \
+            --arg version "$RELEASE_TAG" \
+            --argjson release "$release" \
+            '{
+              username: $username,
+              embeds: [{
+                title: (if $release.name == "" then $version else $release.name end),
+                url: $release.url,
+                description: (
+                  if $release.body == "" then
+                    "A new Sonora release is available."
+                  else
+                    $release.body[0:4000]
+                  end
+                ),
+                color: 5793266,
+                fields: [{
+                  name: "Version",
+                  value: $version,
+                  inline: true
+                }]
+              }]
+            }' |
+          curl --fail-with-body \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @- \
+            "$DISCORD_WEBHOOK_URL"
