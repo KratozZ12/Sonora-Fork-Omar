@@ -9,6 +9,7 @@ pub mod lyrics;
 mod models;
 pub mod musixmatch;
 pub mod netease;
+pub mod samply;
 mod spectrum;
 pub mod spotify;
 pub mod youtube;
@@ -39,6 +40,31 @@ pub fn is_local_id(id: &str) -> bool {
         || id.starts_with(LOCAL_ALBUM_PREFIX)
         || id.starts_with(LOCAL_ARTIST_PREFIX)
         || id.starts_with(LOCAL_PLAYLIST_PREFIX)
+}
+
+pub use samply::is_samply_id;
+
+/// Which of the connected libraries answers for an id.
+///
+/// Kept apart from [`is_local_id`], which asks a different question — whether
+/// something is a file on this machine, with tags to edit and no account behind
+/// it. A Samply file is neither local in that sense nor part of the streaming
+/// catalogue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lane {
+    Streaming,
+    Local,
+    Samply,
+}
+
+pub fn lane_of(id: &str) -> Lane {
+    if is_local_id(id) {
+        return Lane::Local;
+    }
+    match is_samply_id(id) {
+        true => Lane::Samply,
+        false => Lane::Streaming,
+    }
 }
 
 pub fn distinct_covers(tracks: &[Track], wanted: usize) -> Vec<String> {

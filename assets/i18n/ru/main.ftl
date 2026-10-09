@@ -274,6 +274,7 @@ search-results = Результаты
 search-songs = Треки
 search-artists = Исполнители
 search-albums-playlists = Альбомы и плейлисты
+search-quick-albums = Альбомы
 search-tag = { $kind } ·
 search-saved =
     { $count ->

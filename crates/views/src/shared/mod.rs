@@ -4,6 +4,8 @@ pub(crate) mod album_grid;
 pub(crate) mod cards;
 pub(crate) mod cells;
 pub(crate) mod confirm;
+pub(crate) mod fluid;
+pub(crate) mod grafter;
 pub(crate) mod hero;
 pub(crate) mod local;
 pub(crate) mod menus;

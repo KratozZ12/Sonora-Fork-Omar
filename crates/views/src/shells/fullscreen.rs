@@ -13,6 +13,7 @@ use i18n::t;
 use input::{ToggleFullscreen, WORKSPACE_CONTEXT};
 use router::{Destination, navigate};
 use state::{AppSettings, Cover, Playback, Queue, SideTab, Sonora};
+use ui::Faced as _;
 use ui::{
     ActiveTheme as _, Artwork, Button, ExplicitBadge, InlineLink, InlineLinks, Motion,
     Motioned as _, Popup, Room, Scrollbar, Scrubber, ScrubberState, Springs, Text, Visualizer,
@@ -394,6 +395,7 @@ impl FullscreenView {
                             .min_w_0()
                             .truncate()
                             .text_size(theme.text(Text::Title))
+                            .face(ui::Face::Rounded)
                             .font_weight(FontWeight::SEMIBOLD)
                             .when_some(album, |this, album| {
                                 this.cursor_pointer()

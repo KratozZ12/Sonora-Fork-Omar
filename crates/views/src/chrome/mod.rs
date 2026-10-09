@@ -7,6 +7,7 @@ mod toasts;
 mod toolbar;
 pub(crate) mod tools;
 mod update_notice;
+mod verse;
 
 pub(crate) use aside::Aside;
 pub(crate) use player_bar::PlayerBar;

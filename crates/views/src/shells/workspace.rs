@@ -14,6 +14,7 @@ use crate::chrome::{
     Chrome, PlayerBar, SidebarLeft, SidebarRight, TitleBarOptions, ToastStack, UpdateNotice,
 };
 use crate::shared::confirm::Confirm;
+use crate::shared::grafter::Grafter;
 use crate::shared::playlist_editor::PlaylistEditor;
 use crate::shared::tag_editor::TagEditor;
 use crate::shells::Shell;
@@ -45,6 +46,7 @@ pub(crate) struct Workspace {
     sidebar_right: Entity<SidebarRight>,
     playlist_editor: Entity<PlaylistEditor>,
     tag_editor: Entity<TagEditor>,
+    grafter: Entity<Grafter>,
     confirm: Entity<Confirm>,
     toasts: Entity<ToastStack>,
     notice: Entity<UpdateNotice>,
@@ -70,6 +72,7 @@ impl Workspace {
             sidebar_right,
             playlist_editor: PlaylistEditor::entity(cx),
             tag_editor: TagEditor::entity(cx),
+            grafter: Grafter::entity(cx),
             confirm: Confirm::entity(cx),
             toasts: cx.new(ToastStack::new),
             notice: cx.new(UpdateNotice::new),
@@ -291,6 +294,7 @@ impl Render for Workspace {
             )
             .child(self.playlist_editor.clone())
             .child(self.tag_editor.clone())
+            .child(self.grafter.clone())
             .child(self.confirm.clone())
             .child(self.notice.clone())
     }

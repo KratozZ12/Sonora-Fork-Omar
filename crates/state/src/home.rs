@@ -8,6 +8,7 @@ use crate::{Io, Library, LibraryPart, LibraryState, Session, SessionEvent, join}
 
 const GROUP_SIZE: usize = 10;
 const LIMIT: usize = GROUP_SIZE * 3;
+const LATE: &[&str] = &["Uniquely yours", "Watch What You Love", "Made For Us"];
 
 pub struct Home {
     library: Entity<Library>,
@@ -106,7 +107,7 @@ impl Home {
                         if let Some(quick_picks) = feed.quick_picks {
                             this.quick_picks = Rc::new(quick_picks);
                         }
-                        this.sections = Rc::new(pruned(&feed.sections));
+                        this.sections = Rc::new(late(pruned(&feed.sections)));
                         this.name_playlists(feed.sections, cx);
                     }
                     Err(error) => log::warn!("home: cannot load the feed: {error:#}"),
@@ -138,7 +139,7 @@ impl Home {
             };
 
             this.update(cx, |this, cx| {
-                this.sections = Rc::new(named);
+                this.sections = Rc::new(late(named));
                 cx.notify();
             })
             .ok();
@@ -182,6 +183,11 @@ fn pruned(sections: &[GenreSection]) -> Vec<GenreSection> {
             })
         })
         .collect()
+}
+
+fn late(mut sections: Vec<GenreSection>) -> Vec<GenreSection> {
+    sections.sort_by_key(|section| LATE.contains(&section.title.as_str()));
+    sections
 }
 
 fn picks(library: &Entity<Library>, seed: u64, cx: &App) -> Rc<Vec<Track>> {

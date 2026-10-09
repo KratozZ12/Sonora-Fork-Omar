@@ -110,6 +110,10 @@ impl Lyrics {
         self.hits.get(self.chosen)
     }
 
+    pub fn chosen(&self) -> usize {
+        self.chosen
+    }
+
     pub fn revision(&self) -> u64 {
         self.revision
     }

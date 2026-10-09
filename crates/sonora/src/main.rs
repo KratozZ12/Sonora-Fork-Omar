@@ -62,12 +62,13 @@ fn main() {
             Arc::new(music::spotify::SpotifyProvider::from_env()),
             Arc::new(music::youtube::YouTubeProvider::new()),
         ];
+        let state_dir = dirs::config_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("sonora");
         let local_provider: Arc<dyn music::MusicProvider> =
-            Arc::new(music::local::LocalProvider::new(
-                dirs::config_dir()
-                    .unwrap_or_else(std::env::temp_dir)
-                    .join("sonora"),
-            ));
+            Arc::new(music::local::LocalProvider::new(state_dir.clone()));
+        let samply_provider: Arc<dyn music::MusicProvider> =
+            Arc::new(music::samply::SamplyProvider::new(state_dir));
         let lyrics: Vec<Arc<dyn LyricsProvider>> = vec![
             Arc::new(music::binimum::Binimum::new()),
             Arc::new(music::musixmatch::Musixmatch::new()),
@@ -75,7 +76,7 @@ fn main() {
             Arc::new(music::kugou::Kugou::new()),
             Arc::new(music::netease::NetEase::new()),
         ];
-        state::init(cx, io, providers, local_provider, lyrics);
+        state::init(cx, io, providers, local_provider, samply_provider, lyrics);
         let start = opened_start.unwrap_or_else(|| {
             let startup = Sonora::global(cx).settings.read(cx).startup().to_owned();
             Screen::from_id(&startup)

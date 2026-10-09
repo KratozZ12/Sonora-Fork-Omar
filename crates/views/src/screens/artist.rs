@@ -11,20 +11,23 @@ use crate::chrome::Chrome;
 use crate::shared::cells;
 use i18n::t;
 use music::{Album, ReleaseType, SavedArtist, Track};
-use state::{AppSettings, ArtistDetail, Origin, Playback, Sonora};
+use state::{AppSettings, ArtistDetail, Origin, Playback, Sonora, Stock};
 use ui::ActiveTheme as _;
+use ui::Faced as _;
 use ui::Listing as _;
 use ui::{
-    Button, Card, MIN_CONTENT, Mode, Picker, Pin, PinKind, Popovers, Popup, Scrollbar, Scroller,
-    Skeleton, TableDelegate, TableEvent, TableState, Text, scrolled, snapped, table,
+    Button, Card, MIN_CONTENT, MenuItem, Mode, Picker, Pin, PinKind, Popovers, Popup, Scrollbar,
+    Scroller, Skeleton, TableDelegate, TableEvent, TableState, Text, scrolled, snapped, table,
 };
 
 use crate::chrome::tools;
 use crate::chrome::{Toolbar, Tooled};
 use crate::shared::about::{AboutArtist, about_modal};
 use crate::shared::album_grid::{AlbumGrid, CardGrid};
+use crate::shared::cards;
 use crate::shared::confirm::Confirm;
-use crate::shared::hero::{HeroMetaStrip, HeroPlayButton, PageHero};
+use crate::shared::fluid::Fluid;
+use crate::shared::hero::{HeroMetaStrip, HeroPlayButton, PageHero, SOFT};
 use crate::shared::menus::{ItemMenu, album_menu, artist_menu};
 use crate::shared::page;
 use crate::shared::picks::{Picks, Shape};
@@ -117,6 +120,7 @@ pub(crate) struct ArtistView {
     me: WeakEntity<Self>,
     popovers: Popovers,
     release_menu: Option<(Album, Point<Pixels>)>,
+    fluid: Entity<Fluid>,
 }
 
 impl ArtistView {
@@ -161,7 +165,10 @@ impl ArtistView {
             let mut delegate = TableDelegate::new(source, width, cx);
             delegate.set_layout(saved, cx);
             delegate.set_sorting(sorting.flatten(), cx);
-            TableState::new(delegate, cx).follow(scroll)
+            TableState::new(delegate, cx)
+                .follow(scroll)
+                .headless()
+                .floating()
         });
 
         cx.observe(&detail, |this, detail, cx| {
@@ -180,6 +187,11 @@ impl ArtistView {
                 });
             }
             this.popular = Rc::new(detail.read(cx).tracks().to_vec());
+            let portrait = detail
+                .read(cx)
+                .artist()
+                .and_then(|artist| artist.cover_large.clone());
+            this.fluid.update(cx, |fluid, cx| fluid.paint(portrait, cx));
             this.popular_page = 0;
             this.track_menu.reset(cx);
             this.track_context = None;
@@ -196,6 +208,7 @@ impl ArtistView {
             cx.notify();
         })
         .detach();
+        cx.observe(&settings, |_, _, cx| cx.notify()).detach();
         let current_playback = playback_status(&playback, cx);
         let artist_id = detail.read(cx).id().map(str::to_owned);
         cx.observe(&playback, |this, playback, cx| {
@@ -222,6 +235,10 @@ impl ArtistView {
 
         let me = cx.entity();
         let toolbar = Toolbar::tooled(&me, cx);
+        let detail_portrait = detail
+            .read(cx)
+            .artist()
+            .and_then(|artist| artist.cover_large.clone());
 
         Self {
             popular: Rc::new(detail.read(cx).tracks().to_vec()),
@@ -249,6 +266,12 @@ impl ArtistView {
             me: me.downgrade(),
             popovers: Popovers::default(),
             release_menu: None,
+            fluid: cx.new(|cx| {
+                let mut fluid = Fluid::new();
+                let portrait = detail_portrait.clone();
+                fluid.paint(portrait, cx);
+                fluid
+            }),
         }
     }
 
@@ -332,6 +355,33 @@ impl ArtistView {
             .into_any_element()
     }
 
+    fn grafted(&self, cx: &App) -> Vec<String> {
+        let Some(id) = self.detail.read(cx).id() else {
+            return Vec::new();
+        };
+        self.settings
+            .read(cx)
+            .grafts(Stock::Discography, id)
+            .iter()
+            .map(|graft| graft.id.clone())
+            .collect()
+    }
+
+    fn albums(&self, cx: &App) -> Vec<Album> {
+        let detail = self.detail.read(cx);
+        let Some(id) = detail.id() else {
+            return detail.albums().to_vec();
+        };
+        let library = Sonora::global(cx).library.read(cx);
+        let grafted = self
+            .settings
+            .read(cx)
+            .grafts(Stock::Discography, id)
+            .iter()
+            .filter_map(|graft| Some((graft.at, library.local_album(&graft.id)?.clone())));
+        state::splice(detail.albums(), grafted)
+    }
+
     fn saved_artist(&self, cx: &App) -> Option<SavedArtist> {
         let detail = self.detail.read(cx);
         let artist = detail.artist()?;
@@ -354,7 +404,8 @@ impl ArtistView {
         let followed = library.read(cx).saved_artist(&target.id);
 
         let heart = Button::new("artist-toggle-library")
-            .outline()
+            .ghost()
+            .bg(theme.foreground.opacity(SOFT))
             .icon(match followed {
                 true => "icons/heart-filled.svg",
                 false => "icons/heart.svg",
@@ -388,9 +439,7 @@ impl ArtistView {
         cx: &App,
     ) -> Pixels {
         let count = self
-            .detail
-            .read(cx)
-            .albums()
+            .albums(cx)
             .iter()
             .filter(|album| filter.matches(album.release_type))
             .count();
@@ -458,9 +507,10 @@ impl ArtistView {
 
     fn releases(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = *cx.theme();
+        let albums = self.albums(cx);
+        let grafted = self.grafted(cx);
         let detail = self.detail.read(cx);
         let loading = detail.is_loading();
-        let albums = detail.albums();
         if albums.is_empty() && !loading {
             return None;
         }
@@ -501,6 +551,12 @@ impl ArtistView {
                     .enumerate()
                     .collect();
                 let opened = cx.entity().downgrade();
+                // the shown list is the spliced one only while nothing is filtered out
+                let movable = match self.release_filter == ReleaseFilter::All {
+                    true => grafted.clone(),
+                    false => Vec::new(),
+                };
+                let artist = detail.id().map(str::to_owned);
 
                 div()
                     .flex()
@@ -508,12 +564,26 @@ impl ArtistView {
                     .gap(gap)
                     .children(shown.chunks(grid.columns.max(1)).map(|row| {
                         let opened = opened.clone();
+                        let movable = movable.clone();
+                        let artist = artist.clone();
 
                         AlbumGrid::new(
                             "artist-release",
                             self.width,
                             row.to_vec(),
                             self.playback.clone(),
+                        )
+                        .on_move(
+                            move |id| movable.iter().any(|held| held == id),
+                            move |id, at, cx| {
+                                let Some(artist) = artist.clone() else {
+                                    return;
+                                };
+                                let settings = Sonora::global(cx).settings.clone();
+                                settings.update(cx, |settings, cx| {
+                                    settings.graft(Stock::Discography, &artist, &id, at, cx)
+                                });
+                            },
                         )
                         .on_context(move |album, position, cx| {
                             let Some(view) = opened.upgrade() else {
@@ -539,6 +609,7 @@ impl ArtistView {
                 .child(
                     div()
                         .text_size(theme.text(Text::Title))
+                        .face(ui::Face::Rounded)
                         .font_weight(FontWeight::BOLD)
                         .child(t!("artist-releases")),
                 )
@@ -546,13 +617,22 @@ impl ArtistView {
                     this.child(
                         div()
                             .flex()
-                            .gap_1()
+                            .gap_2()
                             .children(filters.into_iter().map(|filter| {
+                                let picked = self.release_filter == filter;
                                 Button::new(filter.id())
                                     .label(filter.label())
                                     .small()
-                                    .outline()
-                                    .selected(self.release_filter == filter)
+                                    .ghost()
+                                    .rounded_full()
+                                    .px_3()
+                                    .map(|pill| match picked {
+                                        true => pill
+                                            .hoverless()
+                                            .bg(theme.foreground)
+                                            .tint(theme.background),
+                                        false => pill.bg(theme.foreground.opacity(SOFT)),
+                                    })
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         if this.release_filter == filter {
                                             return;
@@ -576,9 +656,7 @@ impl ArtistView {
 
     fn release_toggle(&self, columns: usize, cx: &mut Context<Self>) -> Option<Button> {
         let count = self
-            .detail
-            .read(cx)
-            .albums()
+            .albums(cx)
             .iter()
             .filter(|album| self.release_filter.matches(album.release_type))
             .count();
@@ -608,34 +686,18 @@ impl ArtistView {
 
         div()
             .w_full()
-            .rounded(theme.radius)
-            .border_1()
-            .border_color(theme.border)
-            .overflow_hidden()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .h(theme.metrics.header)
-                    .px(theme.metrics.pad)
-                    .bg(theme.table_head)
-                    .child(line()),
-            )
             .children((0..5).map(|_| {
                 div()
                     .flex()
                     .items_center()
                     .h(theme.metrics.row)
                     .px(theme.metrics.pad)
-                    .border_t_1()
-                    .border_color(theme.table_row_border)
                     .child(line())
             }))
             .into_any_element()
     }
 
     fn listed(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = *cx.theme();
         let expanded = self.shown.get() > LISTED;
         let more = (self.popular.len() > LISTED).then(|| {
             Button::new("artist-popular-more")
@@ -662,11 +724,7 @@ impl ArtistView {
             .gap_2()
             .child(match self.detail.read(cx).is_loading() {
                 true => self.tracks_loading(cx),
-                false => table(&self.table)
-                    .rounded(theme.radius)
-                    .border_1()
-                    .border_color(theme.border)
-                    .into_any_element(),
+                false => table(&self.table).into_any_element(),
             })
             .children(more)
             .into_any_element()
@@ -739,6 +797,53 @@ impl ArtistView {
             }));
 
         Some(div().pt_6().child(card).into_any_element())
+    }
+
+    fn related(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let theme = *cx.theme();
+        let related = &self.detail.read(cx).artist()?.related;
+        if related.is_empty() {
+            return None;
+        }
+        let grid = CardGrid::layout(self.width);
+        let shown = &related[..related.len().min(grid.columns * RELEASE_ROWS)];
+        let rows = shown
+            .chunks(grid.columns.max(1))
+            .enumerate()
+            .map(|(row, artists)| {
+                CardGrid::new(self.width).children(artists.iter().enumerate().map(
+                    |(column, artist)| {
+                        let place = row * grid.columns + column;
+                        cards::artist_card(("artist-related", place), artist, &self.playback, cx)
+                            .tile(grid.card)
+                            .into_any_element()
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .pt_6()
+                .child(
+                    div()
+                        .text_size(theme.text(Text::Title))
+                        .face(ui::Face::Rounded)
+                        .font_weight(FontWeight::BOLD)
+                        .child(t!("artist-related")),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(release_gap(window))
+                        .children(rows),
+                )
+                .into_any_element(),
+        )
     }
 
     fn about_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -823,8 +928,25 @@ impl Render for ArtistView {
                 .update(cx, |table, _| table.set_viewport(viewport));
         }
 
+        let grafted = self.grafted(cx);
+        let artist = self.detail.read(cx).id().map(str::to_owned);
         let release_menu = self.release_menu.clone().map(|(album, position)| {
-            let menu = album_menu(album, self.playback.clone(), false, cx);
+            let leaving = grafted.contains(&album.id).then(|| album.id.clone());
+            let menu = album_menu(album, self.playback.clone(), false, cx).when_some(
+                leaving.zip(artist.clone()),
+                |menu, (id, artist)| {
+                    menu.item(MenuItem::separator("ungraft-gap")).item(
+                        MenuItem::new("ungraft-album", t!("menu-remove-from-discography"))
+                            .icon("icons/x.svg")
+                            .on_click(move |_, _, cx| {
+                                let settings = Sonora::global(cx).settings.clone();
+                                settings.update(cx, |settings, cx| {
+                                    settings.ungraft(Stock::Discography, &artist, &id, cx)
+                                });
+                            }),
+                    )
+                },
+            );
             Popup::new(position, menu).on_close(cx.listener(|this, _, _, cx| {
                 this.release_menu = None;
                 cx.notify();
@@ -861,6 +983,7 @@ impl Render for ArtistView {
                             div()
                                 .pb_3()
                                 .text_size(theme.text(Text::Title))
+                                .face(ui::Face::Rounded)
                                 .font_weight(FontWeight::BOLD)
                                 .child(t!("artist-popular")),
                         )
@@ -872,6 +995,7 @@ impl Render for ArtistView {
             })
             .children(self.releases(window, cx))
             .children(self.about(cx))
+            .children(self.related(window, cx))
             .when(release_padding > Pixels::ZERO, |this| {
                 this.child(div().h(release_padding).flex_none())
             });
@@ -879,6 +1003,7 @@ impl Render for ArtistView {
         div()
             .relative()
             .size_full()
+            .child(self.fluid.clone())
             .child(page)
             .when_some(release_menu, |this, menu| this.child(menu))
             .when_some(track_menu, |this, menu| this.child(menu))

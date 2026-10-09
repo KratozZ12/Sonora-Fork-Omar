@@ -96,6 +96,11 @@ pub struct Session {
     local_catalog: Option<Arc<CatalogSource>>,
     local_playback: Option<Arc<dyn PlaybackFactory>>,
     local_task: Option<Task<()>>,
+    samply_provider: Arc<dyn MusicProvider>,
+    samply_client: Option<Arc<dyn MusicApi>>,
+    samply_catalog: Option<Arc<CatalogSource>>,
+    samply_playback: Option<Arc<dyn PlaybackFactory>>,
+    samply_task: Option<Task<()>>,
     watch: Option<Task<()>>,
     reconnect: Option<Task<()>>,
     reconnecting: bool,
@@ -108,6 +113,7 @@ impl Session {
     pub fn new(
         providers: Vec<Arc<dyn MusicProvider>>,
         local_provider: Arc<dyn MusicProvider>,
+        samply_provider: Arc<dyn MusicProvider>,
         settings: Entity<AppSettings>,
         io: Io,
         cx: &mut Context<Self>,
@@ -138,12 +144,18 @@ impl Session {
             local_catalog: None,
             local_playback: None,
             local_task: None,
+            samply_provider,
+            samply_client: None,
+            samply_catalog: None,
+            samply_playback: None,
+            samply_task: None,
             watch: None,
             reconnect: None,
             reconnecting: false,
             attempt: 0,
         };
         session.restore_local(cx);
+        session.restore_samply(cx);
         session
     }
 
@@ -163,15 +175,37 @@ impl Session {
         self.local_client.clone()
     }
 
+    pub fn samply_client(&self) -> Option<Arc<dyn MusicApi>> {
+        self.samply_client.clone()
+    }
+
+    pub fn samply_ready(&self) -> bool {
+        self.samply_client.is_some()
+    }
+
     pub(crate) fn catalog(&self, id: &str) -> Option<Arc<CatalogSource>> {
-        match music::is_local_id(id) {
-            true => self.local_catalog.clone(),
-            false => self.catalog.clone(),
+        match music::lane_of(id) {
+            music::Lane::Local => self.local_catalog.clone(),
+            music::Lane::Samply => self.samply_catalog.clone(),
+            music::Lane::Streaming => self.catalog.clone(),
+        }
+    }
+
+    /// The api that answers for an id, whichever library it belongs to.
+    pub fn api_for(&self, id: &str) -> Option<Arc<dyn MusicApi>> {
+        match music::lane_of(id) {
+            music::Lane::Local => self.local_client.clone(),
+            music::Lane::Samply => self.samply_client.clone(),
+            music::Lane::Streaming => self.client.clone(),
         }
     }
 
     pub fn local_playback(&self) -> Option<Arc<dyn PlaybackFactory>> {
         self.local_playback.clone()
+    }
+
+    pub fn samply_playback(&self) -> Option<Arc<dyn PlaybackFactory>> {
+        self.samply_playback.clone()
     }
 
     pub fn local_path(&self) -> Option<String> {
@@ -260,9 +294,10 @@ impl Session {
     }
 
     pub fn slug_for(&self, id: &str) -> Option<&'static str> {
-        match music::is_local_id(id) {
-            true => Some(self.local_slug()),
-            false => self.provider_slug(),
+        match music::lane_of(id) {
+            music::Lane::Local => Some(self.local_slug()),
+            music::Lane::Samply => Some(self.samply_provider.slug()),
+            music::Lane::Streaming => self.provider_slug(),
         }
     }
 
@@ -613,6 +648,33 @@ impl Session {
         self.local_catalog = None;
         self.local_playback = None;
         self.local_task = None;
+        cx.notify();
+        cx.emit(SessionEvent::LocalChanged);
+    }
+
+    fn restore_samply(&mut self, cx: &mut Context<Self>) {
+        let provider = self.samply_provider.clone();
+        if !provider.stored() {
+            return;
+        }
+        let io = self.io.clone();
+        self.samply_task = Some(cx.spawn(async move |this, cx| {
+            let restored = join(io.spawn(async move { provider.restore().await })).await;
+            this.update(cx, |this, cx| match restored {
+                Ok(Some(session)) => this.samply_signed_in(session, cx),
+                Ok(None) => {}
+                Err(error) => log::warn!("session: cannot reach samply: {error:#}"),
+            })
+            .ok();
+        }));
+    }
+
+    fn samply_signed_in(&mut self, session: ProviderSession, cx: &mut Context<Self>) {
+        self.samply_catalog = Some(Arc::new(CatalogSource::new(session.api.clone())));
+        self.samply_client = Some(session.api);
+        self.samply_playback = Some(session.playback);
+        self.samply_task = None;
+        log::debug!("session: samply connected");
         cx.notify();
         cx.emit(SessionEvent::LocalChanged);
     }

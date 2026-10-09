@@ -3,6 +3,7 @@ mod catalog;
 mod cover;
 mod detail;
 mod genre;
+mod graft;
 mod history;
 mod home;
 mod library;
@@ -12,6 +13,7 @@ mod playback;
 mod profile;
 mod queue;
 mod remote;
+mod samply;
 mod search;
 mod session;
 mod settings;
@@ -26,6 +28,7 @@ pub use artist::ArtistDetail;
 pub use cover::Cover;
 pub use detail::{Collection, Detail, Header};
 pub use genre::{GenreDetails, Genres};
+pub use graft::{Graft, Stock, splice};
 pub use history::{History, HistoryState};
 pub use home::Home;
 pub use library::{Library, LibraryEvent, LibraryPart, LibraryState, Problem};
@@ -34,6 +37,7 @@ pub use playback::{Origin, Playback, PlaybackState, Repeat, Whence};
 pub use profile::Profile;
 pub use queue::{Named, Queue, Resume, Stub};
 pub use remote::{Remote, attach as attach_remote};
+pub use samply::Samply;
 pub use search::{AlbumHit, ArtistHit, Hit, Kind, PlaylistHit, Search};
 pub use session::{Failure, ProviderInfo, Session, SessionEvent, SessionState};
 pub use settings::{
@@ -111,13 +115,22 @@ pub fn init(
     io: Io,
     providers: Vec<Arc<dyn MusicProvider>>,
     local_provider: Arc<dyn MusicProvider>,
+    samply_provider: Arc<dyn MusicProvider>,
     lyrics_providers: Vec<Arc<dyn LyricsProvider>>,
 ) {
     cx.set_global(io.clone());
 
     let settings = cx.new(|_| AppSettings::load());
-    let session =
-        cx.new(|cx| Session::new(providers, local_provider, settings.clone(), io.clone(), cx));
+    let session = cx.new(|cx| {
+        Session::new(
+            providers,
+            local_provider,
+            samply_provider,
+            settings.clone(),
+            io.clone(),
+            cx,
+        )
+    });
     let library = cx.new(|cx| Library::new(session.clone(), io.clone(), cx));
     let queue = cx.new(|cx| Queue::new(session.clone(), settings.clone(), cx));
     let playback = cx.new(|cx| Playback::new(session.clone(), queue.clone(), settings.clone(), cx));

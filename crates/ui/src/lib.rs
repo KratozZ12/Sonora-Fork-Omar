@@ -6,6 +6,7 @@ mod controls;
 mod deck;
 mod drag;
 mod explicit;
+mod face;
 mod filters;
 mod form;
 mod glide;
@@ -51,6 +52,7 @@ pub use controls::WindowControls;
 pub use deck::Deck;
 pub use drag::{Edge, drop_gap, drop_marker};
 pub use explicit::ExplicitBadge;
+pub use face::{Face, Faced, face, find_faces, set_chosen_font};
 pub use filters::{
     Filter, FilterChange, FlagAxis, RangeAxis, RangeScrubber, RangeState, SortAxis, Unit,
 };
@@ -73,7 +75,7 @@ pub use motion::{
     ease_out_cubic, ease_out_expo, ease_out_quad, entrance_span, mix, veiled,
 };
 pub use notice::Notice;
-pub use palette::tint;
+pub use palette::{palette, secondary, tint};
 pub use panel::{Panel, Side};
 pub use picker::Picker;
 pub use pin::{DraggedPin, Pin, PinKind, Pinnable, Spot};

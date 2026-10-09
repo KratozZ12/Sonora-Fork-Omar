@@ -15,7 +15,7 @@ use gpui::{
 use crate::filters::FilterChange;
 use crate::menu::Menu;
 use crate::metrics::{snapped, text_width};
-use crate::pin::{Pin, Pinnable};
+use crate::pin::{DraggedPin, Pin, Pinnable};
 use crate::popup::Popup;
 use crate::theme::ActiveTheme as _;
 use crate::{Filter, SortAxis};
@@ -30,6 +30,9 @@ actions!(
 
 pub const TABLE_CONTEXT: &str = "Table";
 
+const FLOAT_HOVER: f32 = 0.06;
+const FLOAT_PLAYING: f32 = 0.08;
+const FLOAT_SELECTED: f32 = 0.13;
 const MIN_CELL: Pixels = px(24.);
 const GRIP: Pixels = px(9.);
 const OVERSCAN: usize = 2;
@@ -89,6 +92,12 @@ pub trait TableSource: 'static {
 
     fn pin(&self, _row: usize, _cx: &App) -> Option<Pin> {
         None
+    }
+
+    /// Whether a pin dragged over the table may be dropped onto a row, to move
+    /// it there. The table only reports the drop; the source decides what moves.
+    fn accepts(&self, _pin: &Pin, _cx: &App) -> bool {
+        false
     }
 
     fn group(&self, _field: Self::Field, _row: usize, _cx: &App) -> Option<SharedString> {
@@ -497,6 +506,7 @@ impl<S: TableSource> TableDelegate<S> {
 pub enum TableEvent {
     DoubleClicked(usize),
     Activated(usize),
+    Dropped { id: String, row: usize },
     Removed,
     LayoutChanged,
     SortChanged,
@@ -560,6 +570,8 @@ pub struct TableState<S: TableSource> {
     context_menu: Option<(Vec<usize>, Point<Pixels>)>,
     moving: Option<(usize, usize)>,
     sizing: Option<Sizing>,
+    headless: bool,
+    floating: bool,
 }
 
 impl<S: TableSource> EventEmitter<TableEvent> for TableState<S> {}
@@ -581,11 +593,31 @@ impl<S: TableSource> TableState<S> {
             context_menu: None,
             moving: None,
             sizing: None,
+            headless: false,
+            floating: false,
         }
     }
 
     pub fn follow(mut self, scroll: ScrollHandle) -> Self {
         self.scroll = Some(scroll);
+        self
+    }
+
+    /// Drop the row of column names above the table.
+    ///
+    /// For a page that already carries its own sort control, where the names
+    /// would only repeat what the page has said. Sorting, resizing and
+    /// reordering by dragging the names go with them.
+    pub fn headless(mut self) -> Self {
+        self.headless = true;
+        self
+    }
+
+    /// Rows that float on the page instead of ruling it: rounded, no lines
+    /// between them, and lit with a veil of the text colour rather than an
+    /// opaque fill, so a coloured page behind the table still shows through.
+    pub fn floating(mut self) -> Self {
+        self.floating = true;
         self
     }
 
@@ -707,6 +739,30 @@ impl<S: TableSource> TableState<S> {
     pub fn rebuild(&mut self, cx: &mut Context<Self>) {
         self.context_menu = None;
         self.delegate.rebuild(cx);
+        cx.notify();
+    }
+
+    /// Open a row's menu from somewhere other than a right click.
+    ///
+    /// A cell can hold a button that asks for the same menu the right button
+    /// gives, so the menu it raises is the same one, over the same rows: the
+    /// selection if the row is part of it, and that row alone if it is not.
+    pub fn open_menu(&mut self, row: usize, at: Point<Pixels>, cx: &mut Context<Self>) {
+        if !self.delegate.holds(row) {
+            self.delegate.pick(row, false, false);
+        }
+        let rows = self.delegate.picked();
+        let visible = self.delegate.visible();
+        if self
+            .delegate
+            .source
+            .context_menu(&rows, &visible, cx)
+            .is_none()
+        {
+            return;
+        }
+        self.delegate.source.context_menu_will_open(&rows, cx);
+        self.context_menu = Some((rows, at));
         cx.notify();
     }
 
@@ -944,6 +1000,8 @@ impl<S: TableSource> TableState<S> {
         let last = (first + self.viewport.rows(row_height)).min(count);
         let bottom = self.corners.bottom_left.max(self.corners.bottom_right);
         let marked = &self.delegate.marked;
+        let floating = self.floating;
+        let lit = theme.foreground;
 
         (first..last)
             .map(|display| {
@@ -976,19 +1034,50 @@ impl<S: TableSource> TableState<S> {
                     .flex()
                     .items_center()
                     .h(row_height)
-                    .when(tail, |this| {
-                        this.rounded_bl(self.corners.bottom_left)
-                            .rounded_br(self.corners.bottom_right)
-                    })
-                    .when(!tail || bottom == Pixels::ZERO, |this| {
-                        this.border_b_1().border_color(theme.table_row_border)
-                    })
-                    .when(playing, |this| this.bg(theme.muted))
-                    .when(selected, |this| this.bg(theme.table_active))
-                    .when(!selected, |this| {
-                        this.hover(move |style| style.bg(theme.table_hover))
+                    .map(|this| match floating {
+                        true => this
+                            .rounded(theme.radius)
+                            .when(playing, |this| this.bg(lit.opacity(FLOAT_PLAYING)))
+                            .when(selected, |this| this.bg(lit.opacity(FLOAT_SELECTED)))
+                            .when(!selected, |this| {
+                                this.hover(move |style| style.bg(lit.opacity(FLOAT_HOVER)))
+                            }),
+                        false => this
+                            .when(tail, |this| {
+                                this.rounded_bl(self.corners.bottom_left)
+                                    .rounded_br(self.corners.bottom_right)
+                            })
+                            .when(!tail || bottom == Pixels::ZERO, |this| {
+                                this.border_b_1().border_color(theme.table_row_border)
+                            })
+                            .when(playing, |this| this.bg(theme.muted))
+                            .when(selected, |this| this.bg(theme.table_active))
+                            .when(!selected, |this| {
+                                this.hover(move |style| style.bg(theme.table_hover))
+                            }),
                     })
                     .when_some(self.delegate.source.pin(row, cx), Pinnable::pin)
+                    .drag_over::<DraggedPin>({
+                        let entity = cx.entity().downgrade();
+                        move |style, dragged, _, cx| {
+                            let accepted = entity.upgrade().is_some_and(|table| {
+                                table.read(cx).delegate.source.accepts(&dragged.pin, cx)
+                            });
+                            match accepted {
+                                true => style.border_t_2().border_color(theme.primary),
+                                false => style,
+                            }
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, dragged: &DraggedPin, _, cx| {
+                        if !this.delegate.source.accepts(&dragged.pin, cx) {
+                            return;
+                        }
+                        cx.emit(TableEvent::Dropped {
+                            id: dragged.pin.id.clone(),
+                            row,
+                        });
+                    }))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, event: &MouseDownEvent, window, cx| {
@@ -1108,7 +1197,10 @@ impl<S: TableSource> Render for TableState<S> {
         let metrics = cx.theme().metrics;
         let backdrop = cx.theme().background;
         let row = snapped(metrics.row, window);
-        let head = snapped(metrics.header, window);
+        let head = match self.headless {
+            true => Pixels::ZERO,
+            false => snapped(metrics.header, window),
+        };
         let height = self.height(head, row);
         let pinned = snapped(self.viewport.top.clamp(Pixels::ZERO, height - head), window);
         let top = unpinned(self.corners, pinned);
@@ -1147,18 +1239,20 @@ impl<S: TableSource> Render for TableState<S> {
             .w_full()
             .h(height)
             .children(self.rows(head, row, cx))
-            .child(
-                div()
-                    .block_mouse_except_scroll()
-                    .absolute()
-                    .top(pinned)
-                    .left_0()
-                    .w_full()
-                    .bg(backdrop)
-                    .rounded_tl(top.top_left)
-                    .rounded_tr(top.top_right)
-                    .child(self.header(head, top, cx)),
-            )
+            .when(!self.headless, |this| {
+                this.child(
+                    div()
+                        .block_mouse_except_scroll()
+                        .absolute()
+                        .top(pinned)
+                        .left_0()
+                        .w_full()
+                        .bg(backdrop)
+                        .rounded_tl(top.top_left)
+                        .rounded_tr(top.top_right)
+                        .child(self.header(head, top, cx)),
+                )
+            })
             .when_some(context_menu, |this, menu| this.child(menu))
     }
 }

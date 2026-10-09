@@ -255,6 +255,7 @@ pub struct Playback {
     track: Option<Track>,
     engine: Option<Box<dyn Player>>,
     local_engine: Option<Box<dyn Player>>,
+    samply_engine: Option<Box<dyn Player>>,
     session: Entity<Session>,
     queue: Entity<Queue>,
     settings: Entity<AppSettings>,
@@ -266,6 +267,7 @@ pub struct Playback {
     seeded: Option<String>,
     task: Option<Task<()>>,
     local_task: Option<Task<()>>,
+    samply_task: Option<Task<()>>,
     load: Option<Task<()>>,
     fetch: Option<Task<()>>,
     enqueue: Option<Task<()>>,
@@ -309,7 +311,12 @@ impl Playback {
                 if this.local_engine.is_none()
                     && let Some(playback) = session.read(cx).local_playback()
                 {
-                    this.start_local_engine(playback, cx);
+                    this.start_aux_engine(playback, music::Lane::Local, cx);
+                }
+                if this.samply_engine.is_none()
+                    && let Some(playback) = session.read(cx).samply_playback()
+                {
+                    this.start_aux_engine(playback, music::Lane::Samply, cx);
                 }
             }
         })
@@ -331,6 +338,7 @@ impl Playback {
             track: None,
             engine: None,
             local_engine: None,
+            samply_engine: None,
             session,
             queue,
             settings,
@@ -342,6 +350,7 @@ impl Playback {
             seeded: None,
             task: None,
             local_task: None,
+            samply_task: None,
             load: None,
             fetch: None,
             enqueue: None,
@@ -363,9 +372,10 @@ impl Playback {
     }
 
     fn engine_for(&self, id: &str) -> Option<&dyn Player> {
-        match music::is_local_id(id) {
-            true => self.local_engine.as_deref(),
-            false => self.engine.as_deref(),
+        match music::lane_of(id) {
+            music::Lane::Local => self.local_engine.as_deref(),
+            music::Lane::Samply => self.samply_engine.as_deref(),
+            music::Lane::Streaming => self.engine.as_deref(),
         }
     }
 
@@ -379,12 +389,18 @@ impl Playback {
     }
 
     fn silence_other(&self, id: &str) {
-        let other = match music::is_local_id(id) {
-            true => self.engine.as_deref(),
-            false => self.local_engine.as_deref(),
-        };
-        if let Some(engine) = other {
-            engine.pause();
+        let mine = music::lane_of(id);
+        let others = [
+            (music::Lane::Streaming, self.engine.as_deref()),
+            (music::Lane::Local, self.local_engine.as_deref()),
+            (music::Lane::Samply, self.samply_engine.as_deref()),
+        ];
+        for (lane, engine) in others {
+            if lane != mine
+                && let Some(engine) = engine
+            {
+                engine.pause();
+            }
         }
     }
 
@@ -468,6 +484,18 @@ impl Playback {
     ) {
         self.fetch = None;
         self.begin(tracks, index, origin, cx);
+    }
+
+    /// Plays a whole list rather than a track picked from it: from its first
+    /// playable track, or with shuffle on from a random one.
+    pub fn start_all(
+        &mut self,
+        tracks: Vec<Track>,
+        origin: Option<Origin>,
+        cx: &mut Context<Self>,
+    ) {
+        self.fetch = None;
+        self.begin_all(tracks, origin, cx);
     }
 
     pub fn play_radio(&mut self, seed: &Track, cx: &mut Context<Self>) {
@@ -682,11 +710,7 @@ impl Playback {
     }
 
     fn client_for(&self, id: &str, cx: &Context<Self>) -> Option<Arc<dyn MusicApi>> {
-        let session = self.session.read(cx);
-        match music::is_local_id(id) {
-            true => session.local_client(),
-            false => session.client(),
-        }
+        self.session.read(cx).api_for(id)
     }
 
     fn enqueue_from<F>(
@@ -760,6 +784,30 @@ impl Playback {
         self.play(&track, cx);
     }
 
+    fn begin_all(
+        &mut self,
+        mut tracks: Vec<Track>,
+        origin: Option<Origin>,
+        cx: &mut Context<Self>,
+    ) {
+        let playable: Vec<usize> = (0..tracks.len())
+            .filter(|&index| tracks[index].playable)
+            .collect();
+        let first = match self.queue.read(cx).shuffle() {
+            false => playable.first().copied().unwrap_or_default(),
+            // whatever sits before the start is history, so the pick goes first
+            true => match playable.get(fastrand::usize(..playable.len().max(1))) {
+                Some(&picked) => {
+                    let track = tracks.remove(picked);
+                    tracks.insert(0, track);
+                    0
+                }
+                None => 0,
+            },
+        };
+        self.begin(tracks, first, origin, cx);
+    }
+
     fn gather<F>(&mut self, origin: Origin, cx: &mut Context<Self>, tracks: F)
     where
         F: FnOnce(Arc<dyn MusicApi>) -> Fetch + Send + 'static,
@@ -778,7 +826,7 @@ impl Playback {
             let loaded = join(io.spawn(async move { tracks(client).await })).await;
 
             this.update(cx, |this, cx| match loaded {
-                Ok(tracks) => this.begin(tracks, 0, Some(origin), cx),
+                Ok(tracks) => this.begin_all(tracks, Some(origin), cx),
                 Err(error) if this.has_active_playback() => {
                     log::error!("playback: cannot load context: {error:#}");
                 }
@@ -1278,6 +1326,9 @@ impl Playback {
         if let Some(engine) = self.local_engine.as_ref() {
             engine.set_gain(level);
         }
+        if let Some(engine) = self.samply_engine.as_ref() {
+            engine.set_gain(level);
+        }
         cx.notify();
     }
 
@@ -1309,11 +1360,21 @@ impl Playback {
         self.restart_engine(cx);
     }
 
-    fn local_active(&self) -> bool {
+    fn active_lane(&self) -> Option<music::Lane> {
         self.track
             .as_ref()
             .and_then(|track| track.id.as_deref())
-            .is_some_and(music::is_local_id)
+            .map(music::lane_of)
+    }
+
+    /// Whether what is playing belongs to a library of its own rather than to
+    /// the streaming provider. Nothing playing counts as streaming, the way it
+    /// did when local files were the only other lane.
+    fn aux_active(&self) -> bool {
+        matches!(
+            self.active_lane(),
+            Some(music::Lane::Local) | Some(music::Lane::Samply)
+        )
     }
 
     fn restart_engine(&mut self, cx: &mut Context<Self>) {
@@ -1325,7 +1386,7 @@ impl Playback {
             return cx.notify();
         };
 
-        match self.local_active() {
+        match self.aux_active() {
             true => self.start_engine(playback, cx),
             false => self.rebind(playback, cx),
         }
@@ -1339,26 +1400,27 @@ impl Playback {
             return;
         };
         let at = self.live_position();
-        let local = music::is_local_id(id);
-        let playback = match local {
-            true => self.session.read(cx).local_playback(),
-            false => self.session.read(cx).playback(),
+        let lane = music::lane_of(id);
+        let session = self.session.read(cx);
+        let playback = match lane {
+            music::Lane::Local => session.local_playback(),
+            music::Lane::Samply => session.samply_playback(),
+            music::Lane::Streaming => session.playback(),
         };
         let Some(playback) = playback else {
             return;
         };
 
         log::info!("playback: restarting after the audio output changed");
-        match local {
-            true => {
-                self.local_task = None;
-                self.local_engine = None;
-                self.start_local_engine(playback, cx);
-            }
-            false => {
+        match lane {
+            music::Lane::Streaming => {
                 self.task = None;
                 self.engine = None;
                 self.start_engine(playback, cx);
+            }
+            lane => {
+                self.forget_aux_engine(lane);
+                self.start_aux_engine(playback, lane, cx);
             }
         }
         self.load_after(&track, Start::Pick, cx);
@@ -1401,10 +1463,10 @@ impl Playback {
         };
         let (engine, events) = playback.start(config);
 
-        self.listen(events, false, cx);
+        self.listen(events, music::Lane::Streaming, cx);
         self.engine = Some(engine);
         self.refused = None;
-        if !self.local_active() {
+        if !self.aux_active() {
             self.state = PlaybackState::Idle;
             self.position = Duration::ZERO;
             self.clock.reset(Duration::ZERO, false);
@@ -1413,7 +1475,25 @@ impl Playback {
         cx.notify();
     }
 
-    fn start_local_engine(&mut self, playback: Arc<dyn PlaybackFactory>, cx: &mut Context<Self>) {
+    fn forget_aux_engine(&mut self, lane: music::Lane) {
+        match lane {
+            music::Lane::Samply => {
+                self.samply_task = None;
+                self.samply_engine = None;
+            }
+            _ => {
+                self.local_task = None;
+                self.local_engine = None;
+            }
+        }
+    }
+
+    fn start_aux_engine(
+        &mut self,
+        playback: Arc<dyn PlaybackFactory>,
+        lane: music::Lane,
+        cx: &mut Context<Self>,
+    ) {
         let config = PlaybackConfig {
             normalisation: self.normalisation,
             gapless: self.gapless,
@@ -1422,30 +1502,39 @@ impl Playback {
         };
         let (engine, events) = playback.start(config);
 
-        self.listen(events, true, cx);
-        self.local_engine = Some(engine);
+        self.listen(events, lane, cx);
+        match lane {
+            music::Lane::Samply => self.samply_engine = Some(engine),
+            _ => self.local_engine = Some(engine),
+        }
         self.prepare_resume(cx);
     }
 
-    fn listen(&mut self, mut events: Box<dyn PlaybackEvents>, local: bool, cx: &mut Context<Self>) {
+    fn listen(
+        &mut self,
+        mut events: Box<dyn PlaybackEvents>,
+        lane: music::Lane,
+        cx: &mut Context<Self>,
+    ) {
         let task = Some(cx.spawn(async move |this, cx| {
             while let Some(event) = events.next().await {
                 if this
-                    .update(cx, |this, cx| this.on_backend_event(event, local, cx))
+                    .update(cx, |this, cx| this.on_backend_event(event, lane, cx))
                     .is_err()
                 {
                     break;
                 }
             }
         }));
-        match local {
-            true => self.local_task = task,
-            false => self.task = task,
+        match lane {
+            music::Lane::Local => self.local_task = task,
+            music::Lane::Samply => self.samply_task = task,
+            music::Lane::Streaming => self.task = task,
         }
     }
 
-    fn on_backend_event(&mut self, event: BackendEvent, local: bool, cx: &mut Context<Self>) {
-        if local != self.local_active() {
+    fn on_backend_event(&mut self, event: BackendEvent, lane: music::Lane, cx: &mut Context<Self>) {
+        if self.active_lane() != Some(lane) {
             return;
         }
         match event {
@@ -1538,7 +1627,7 @@ impl Playback {
         self.task = None;
         self.engine = None;
 
-        if !self.local_active() {
+        if !self.aux_active() {
             self.load = None;
             self.fetch = None;
             self.enqueue = None;

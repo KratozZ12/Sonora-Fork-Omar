@@ -215,6 +215,7 @@ pub struct Artist {
     pub monthly_listeners: Option<u64>,
     pub top_tracks: Vec<Track>,
     pub albums: Vec<Album>,
+    pub related: Vec<SavedArtist>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -30,6 +30,11 @@ nav-albums = Álbumes
 nav-playlists = Listas de reproducción
 nav-artists = Artistas
 nav-local = Música local
+nav-samply = Samply
+samply-unconfigured = Agrega un token de Samply para ver tus proyectos
+samply-loading = Buscando tus proyectos…
+samply-empty = No hay proyectos en esta cuenta de Samply
+samply-refresh = Buscar de nuevo
 nav-back = Atrás
 nav-forward = Adelante
 nav-sidebar = Mostrar u ocultar la barra lateral
@@ -57,6 +62,11 @@ library-local-unconfigured = Configura tu biblioteca local
 app-refresh-library = Actualizar biblioteca
 app-sign-out = Cerrar sesión
 app-quit = Salir
+
+# tray menu
+tray-show = Mostrar Sonora
+tray-play = Reproducir
+tray-pause = Pausar
 
 # table columns
 column-played-at = Reproducido
@@ -118,6 +128,25 @@ menu-go-to-album = Ir al álbum
 menu-go-to-artist = Ir al artista
 menu-view-details = Ver detalles
 menu-copy-link = Copiar enlace
+menu-add-to-discography = Añadir a una discografía
+menu-remove-from-discography = Quitar de esta discografía
+menu-add-to-album = Añadir a un álbum
+menu-remove-from-album = Quitar de este álbum
+graft-discography-title = Añadir a una discografía
+graft-album-title = Añadir a un álbum
+graft-search = Buscar en el catálogo
+graft-hint = Escriba un nombre para buscar
+graft-searching = Buscando…
+graft-nothing = No se encontró nada
+graft-saved = { $count ->
+    [one] { $count } canción en su biblioteca
+   *[other] { $count } canciones en su biblioteca
+}
+detail-shuffle = Aleatorio
+detail-runtime = { $hours ->
+    [0] { $minutes } min
+   *[other] { $hours } h { $minutes } min
+}
 menu-cut = Cortar
 menu-copy = Copiar
 menu-paste = Pegar
@@ -216,6 +245,7 @@ filter-duration = Duración
 filter-year = Año
 filter-explicit = Solo explícitas
 filter-playable = Solo reproducibles
+filter-owned = Creadas por ti
 
 # view
 view-list = Lista
@@ -287,6 +317,7 @@ artist-popular-eyebrow = Descubre a este artista
 artist-popular-empty = Todavía no hay nada que reproducir de este artista
 artist-popular-more = Ver todo
 artist-popular-less = Ver menos
+artist-related = A los fans también les gusta
 artist-releases = Lanzamientos
 artist-releases-more = Ver todo
 artist-releases-less = Ver menos
@@ -332,6 +363,7 @@ search-results = Resultados
 search-songs = Canciones
 search-artists = Artistas
 search-albums-playlists = Álbumes y listas
+search-quick-albums = Álbumes
 search-tag = { $kind } ·
 search-saved =
     { $count ->
@@ -425,6 +457,7 @@ month-12 = dic.
 settings-tab-general = General
 settings-tab-appearance = Apariencia
 settings-tab-playback = Reproducción
+settings-tab-privacy = Privacidad
 settings-theme = Tema
 settings-theme-detail = Elige la paleta de colores de la aplicación
 settings-opacity = Opacidad
@@ -433,6 +466,8 @@ settings-opacity-value = { $percent } %
 settings-theme-config = Abrir la configuración
 settings-adaptive = Tema adaptativo
 settings-adaptive-detail = Tiñe la paleta con la portada del álbum en reproducción
+settings-visualizer = Visualizador
+settings-visualizer-detail = Muestra barras de espectro detrás de la carátula a pantalla completa
 settings-icons = Paquete de iconos
 settings-icons-detail = Elige el conjunto de iconos que usa la interfaz
 settings-motion = Reducir el movimiento
@@ -465,10 +500,19 @@ settings-window-controls = Controles de la ventana
 settings-window-controls-detail = Dibuja minimizar, maximizar y cerrar en la barra de título
 settings-controls-side = Lado de los controles
 settings-controls-side-detail = El extremo de la barra de título donde se sitúan los controles
+settings-close-to-tray = Seguir reproduciendo al cerrar
+settings-close-to-tray-detail = Mantiene Sonora en la bandeja del sistema y sigue reproduciendo después de cerrar su ventana
 settings-normalisation = Normalizar el volumen
 settings-normalisation-detail = Mantiene las pistas a un volumen constante
 settings-gapless = Reproducción sin pausas
 settings-gapless-detail = Encadena una pista con la siguiente sin pausa, tal como se secuenció el álbum
+settings-panel-lyrics-size = Tamaño de la letra (panel)
+settings-panel-lyrics-size-detail = Tamaño del texto de la letra en el panel lateral, además del tamaño de fuente base
+settings-fullscreen-lyrics-size = Tamaño de la letra (pantalla completa)
+settings-fullscreen-lyrics-size-detail = Tamaño del texto de la letra en el reproductor a pantalla completa, además del tamaño de fuente base
+settings-lyrics-size-value = { $size } %
+settings-lyrics-for-local-files = Letra de archivos locales
+settings-lyrics-for-local-files-detail = Usa los metadatos de los archivos locales para buscar la letra en internet
 settings-karaoke-lyrics = Letra en karaoke
 settings-karaoke-lyrics-detail = Resalta la letra palabra por palabra cuando hay sincronización disponible
 settings-romanized-lyrics = Letra romanizada
@@ -482,6 +526,7 @@ settings-romanization-greek = Griego
 settings-romanization-arabic = Árabe
 settings-romanization-other = Otros sistemas de escritura
 settings-advanced = Avanzado
+settings-group-window = Ventana
 settings-group-accounts = Cuentas
 settings-group-library = Biblioteca
 settings-group-text = Texto
@@ -585,6 +630,7 @@ lyrics-failed = No se pudo conectar con el servicio de letras
 lyrics-follow = Volver a seguir la canción
 lyrics-source = Letra de { $source }
 lyrics-writers = Escrita por { $writers }
+lyrics-source-pick = Elegir la fuente de la letra
 
 update-available = Ya está disponible Sonora { $version }
 update-detail = Estás en la versión { $running }. Mira qué ha cambiado o actualiza ahora.

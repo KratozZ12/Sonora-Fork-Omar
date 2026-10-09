@@ -12,6 +12,7 @@ use ui::{
     Layout, Look, Mode, Pace, Pin, Rounding, Saver, Sorting, Stillness, ThemeKind, ThemeOverrides,
 };
 
+use crate::graft::{Graft, Grafts, Stock};
 use crate::queue::{Resume, gap_target};
 use crate::{Repeat, Sonora};
 
@@ -188,6 +189,8 @@ struct Values {
     resume: Option<Resume>,
     #[serde(skip_serializing_if = "Option::is_none")]
     window: Option<Frame>,
+    #[serde(skip_serializing_if = "Grafts::is_empty")]
+    grafts: Grafts,
     appearance: Appearance,
 }
 
@@ -248,6 +251,7 @@ impl Default for Values {
             pinned: Vec::new(),
             resume: None,
             window: None,
+            grafts: Grafts::default(),
             appearance: Appearance::default(),
         }
     }
@@ -754,6 +758,22 @@ impl AppSettings {
             false => self.values.hidden_nav.push(entry.to_owned()),
         }
         self.schedule_save(cx);
+    }
+
+    pub fn grafts(&self, stock: Stock, host: &str) -> &[Graft] {
+        self.values.grafts.of(stock, host)
+    }
+
+    pub fn graft(&mut self, stock: Stock, host: &str, id: &str, at: usize, cx: &mut Context<Self>) {
+        if self.values.grafts.place(stock, host, id, at) {
+            self.schedule_save(cx);
+        }
+    }
+
+    pub fn ungraft(&mut self, stock: Stock, host: &str, id: &str, cx: &mut Context<Self>) {
+        if self.values.grafts.remove(stock, host, id) {
+            self.schedule_save(cx);
+        }
     }
 
     pub fn set_startup(&mut self, screen: impl Into<String>, cx: &mut Context<Self>) {

@@ -484,7 +484,7 @@ fn separate_background(line: &mut LyricsLine) {
                     })
                 })
                 .collect();
-            (!words.is_empty()).then_some(words)
+            (!words.is_empty() && !crammed(&words)).then_some(words)
         });
         let start = words
             .as_ref()
@@ -524,6 +524,19 @@ fn separate_background(line: &mut LyricsLine) {
     }
     line.text = without_spans(&original, &spans);
     line.secondary.extend(lanes);
+}
+
+// Kugou and NetEase give a bracketed backing vocal the last few hundredths of a second
+// of its line when they do not know when it is sung, a blink per word. Real timings
+// never come close (Apple Music's are all past 100ms a word), so a lane that fast is
+// shown lit with its line rather than swept in a flash at the end of it.
+const SQUEEZED: Duration = Duration::from_millis(80);
+
+fn crammed(words: &[LyricsWord]) -> bool {
+    let (Some(first), Some(last)) = (words.first(), words.last()) else {
+        return false;
+    };
+    last.end.saturating_sub(first.start) < SQUEEZED * words.len() as u32
 }
 
 struct Parenthetical {
@@ -825,6 +838,37 @@ mod tests {
             lines[0].secondary[0].sung_end(),
             Some(Duration::from_millis(2500))
         );
+    }
+
+    #[test]
+    fn a_lane_squeezed_into_the_tail_of_its_line_is_not_swept() {
+        let word = |from: u64, to: u64, text: &str| LyricsWord {
+            start: Duration::from_millis(from),
+            end: Duration::from_millis(to),
+            text: text.to_owned(),
+        };
+        let mut lines = vec![LyricsLine {
+            start: Duration::from_millis(24_548),
+            end: Some(Duration::from_millis(27_049)),
+            text: "in college (I'm telling you all)".to_owned(),
+            romanized: None,
+            words: Some(vec![
+                word(25_000, 26_198, "in "),
+                word(26_198, 26_825, "college "),
+                word(26_825, 26_881, "(I'm "),
+                word(26_881, 26_937, "telling "),
+                word(26_937, 26_993, "you "),
+                word(26_993, 27_049, "all)"),
+            ]),
+            secondary: Vec::new(),
+            voice: Voice::Lead,
+        }];
+
+        normalize(&mut lines);
+
+        let lane = &lines[0].secondary[0];
+        assert!(!lane.worded());
+        assert_eq!(lane.start, Duration::from_millis(24_548));
     }
 
     #[test]

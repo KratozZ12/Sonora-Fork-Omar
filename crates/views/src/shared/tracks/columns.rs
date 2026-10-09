@@ -108,14 +108,11 @@ const PLAYED_AT: ColumnSpec<TrackField> = ColumnSpec {
     ..COLUMN
 };
 
+// An album page prints the artists under the title instead of beside it, so the
+// title column takes the room the artists column used to hold.
 const ALBUM_TITLE: ColumnSpec<TrackField> = ColumnSpec {
-    width: Width::Fill(0.665),
+    width: Width::Fill(1.),
     ..TITLE
-};
-
-const ALBUM_ARTISTS: ColumnSpec<TrackField> = ColumnSpec {
-    width: Width::Fill(0.335),
-    ..ARTISTS
 };
 
 const ALBUM_PLAYCOUNT: ColumnSpec<TrackField> = ColumnSpec {
@@ -140,35 +137,36 @@ pub(crate) const PLAYLIST_COLUMNS_BLEND: &[ColumnSpec<TrackField>] =
 pub(crate) const HISTORY_COLUMNS: &[ColumnSpec<TrackField>] =
     &[INDEX, COVER, TITLE, ARTISTS, ALBUM, PLAYED_AT, DURATION];
 
+// An artist page names the artist above the list, so like an album page it prints
+// only the guests under the title and gives the title the artists column's room.
+const ARTIST_TITLE: ColumnSpec<TrackField> = ColumnSpec {
+    width: Width::Fill(0.6),
+    ..TITLE
+};
+
+const ARTIST_ALBUM: ColumnSpec<TrackField> = ColumnSpec {
+    width: Width::Fill(0.4),
+    rank: HANDY,
+    ..ALBUM
+};
+
 pub(crate) const ARTIST_COLUMNS: &[ColumnSpec<TrackField>] = &[
     INDEX,
     COVER,
-    TITLE,
-    ARTISTS.ranked(SPARE),
-    ALBUM.ranked(HANDY),
-    PLAYS,
-    DURATION,
-];
-
-pub(crate) const ARTIST_COLUMNS_LEAN: &[ColumnSpec<TrackField>] = &[
-    INDEX,
-    COVER,
-    TITLE,
-    ARTISTS.ranked(SPARE),
-    ALBUM.ranked(HANDY),
-    DURATION,
-];
-
-pub(crate) const ALBUM_COLUMNS: &[ColumnSpec<TrackField>] = &[
-    INDEX,
-    ALBUM_TITLE,
-    ALBUM_ARTISTS,
+    ARTIST_TITLE,
+    ARTIST_ALBUM,
     ALBUM_PLAYCOUNT,
-    ALBUM_DURATION,
+    DURATION,
 ];
+
+pub(crate) const ARTIST_COLUMNS_LEAN: &[ColumnSpec<TrackField>] =
+    &[INDEX, COVER, ARTIST_TITLE, ARTIST_ALBUM, DURATION];
+
+pub(crate) const ALBUM_COLUMNS: &[ColumnSpec<TrackField>] =
+    &[INDEX, ALBUM_TITLE, ALBUM_PLAYCOUNT, ALBUM_DURATION];
 
 pub(crate) const ALBUM_COLUMNS_LEAN: &[ColumnSpec<TrackField>] =
-    &[INDEX, ALBUM_TITLE, ALBUM_ARTISTS, ALBUM_DURATION];
+    &[INDEX, ALBUM_TITLE, ALBUM_DURATION];
 
 pub(crate) fn playlist_columns(blend: bool, shared: bool) -> &'static [ColumnSpec<TrackField>] {
     match (blend, shared) {

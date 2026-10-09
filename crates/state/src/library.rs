@@ -840,6 +840,13 @@ impl Library {
         albums.iter().find(|album| album.id == id)
     }
 
+    pub fn local_track(&self, id: &str) -> Option<&Track> {
+        let LibraryState::Ready { tracks, .. } = &self.local else {
+            return None;
+        };
+        tracks.iter().find(|track| track.id.as_deref() == Some(id))
+    }
+
     pub fn local_album(&self, id: &str) -> Option<&Album> {
         let LibraryState::Ready { albums, .. } = &self.local else {
             return None;

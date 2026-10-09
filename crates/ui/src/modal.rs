@@ -7,6 +7,7 @@ use gpui::{
     ScrollWheelEvent, SharedString, StyleRefinement, Window, div,
 };
 
+use crate::Faced as _;
 use crate::metrics::Text;
 use crate::motion::Rising as _;
 use crate::scrollbar::Scrollbar;
@@ -165,6 +166,7 @@ impl RenderOnce for Modal {
                             .child(
                                 div()
                                     .text_size(theme.text(Text::Large))
+                                    .face(crate::Face::Display)
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(title),
                             )

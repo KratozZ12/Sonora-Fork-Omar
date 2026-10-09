@@ -283,13 +283,14 @@ fn artists(artists: &Artists) -> (String, Vec<ArtistRef>) {
 fn cover(sources: &[Image], large: bool) -> Option<String> {
     const HEADER: u32 = 300;
 
+    let biggest = sources.iter().max_by_key(|source| source.height);
     let source = match large {
-        true => sources
+        true => biggest,
+        false => sources
             .iter()
             .filter(|source| source.height >= HEADER)
             .min_by_key(|source| source.height)
-            .or_else(|| sources.iter().max_by_key(|source| source.height)),
-        false => sources.iter().min_by_key(|source| source.height),
+            .or(biggest),
     }?;
     non_empty(&source.url).map(str::to_owned)
 }
@@ -334,7 +335,7 @@ mod tests {
         let page = page(data).unwrap();
         assert_eq!(page.album.id, "album1");
         assert_eq!(page.album.release_date, "2005");
-        assert_eq!(page.album.cover.as_deref(), Some("small"));
+        assert_eq!(page.album.cover.as_deref(), Some("large"));
         assert_eq!(page.album.cover_large.as_deref(), Some("large"));
         assert_eq!(page.items, 1);
         assert_eq!(page.total, 2);

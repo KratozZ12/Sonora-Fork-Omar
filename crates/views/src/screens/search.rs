@@ -155,6 +155,10 @@ impl SearchView {
         self.input.update(cx, |input, cx| input.focus(window, cx));
     }
 
+    pub(crate) fn set_query(&self, query: impl Into<SharedString>, cx: &mut App) {
+        self.input.update(cx, |input, cx| input.set_text(query, cx));
+    }
+
     fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
         if self.search.read(cx).query().trim().is_empty() {
             return;

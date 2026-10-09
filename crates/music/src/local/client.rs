@@ -117,6 +117,7 @@ impl MusicApi for LocalClient {
             cover_large: scanned.portraits.get(name).cloned(),
             biography: None,
             monthly_listeners: None,
+            related: Vec::new(),
             top_tracks: scanned
                 .tracks
                 .iter()

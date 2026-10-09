@@ -2,12 +2,13 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, ElementId, Entity, FontWeight, MouseButton, MouseDownEvent, SharedString,
-    Window, div, relative,
+    AnyElement, App, BoxShadow, Div, ElementId, Entity, FontWeight, MouseButton, MouseDownEvent,
+    SharedString, Window, div, point, px, relative,
 };
 use i18n::t;
 use music::Track;
 use state::{Origin, Playback, PlaybackState};
+use ui::Faced as _;
 use ui::{
     ActiveTheme as _, Artwork, Button, ExplicitBadge, LEADING, Pin, Pinnable as _, TableState,
     Text, upper,
@@ -188,7 +189,6 @@ impl RenderOnce for HeroPlayButton {
             _ => (self.label, "icons/play.svg", false),
         };
         let disabled = first_playable.is_none() || blocked;
-        let first_playable = first_playable.unwrap_or_default();
         let listing = self.listing;
         let from = self.from;
         let playback = self.playback;
@@ -207,13 +207,23 @@ impl RenderOnce for HeroPlayButton {
                         _ => {
                             let queued = listing.queue(cx);
                             let from = from.clone().or_else(|| listing.whence(cx));
-                            playback.start(queued, first_playable, from, cx)
+                            playback.start_all(queued, from, cx)
                         }
                     });
                 }),
         )
     }
 }
+
+const LARGE: f32 = 1.7;
+// a large title, over the display size
+const BILLING: f32 = 1.3;
+// the cover's shadow, in shares of the cover
+const LIFT: f32 = 0.08;
+const LIFT_SPREAD: f32 = 0.12;
+/// The fill of a resting control over a page washed in colour: a veil of the text
+/// colour, so it reads on whatever the colour behind it is.
+pub(crate) const SOFT: f32 = 0.1;
 
 type DragStart = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
@@ -224,8 +234,10 @@ pub(crate) struct PageHero {
     cover: Option<String>,
     fallback: Option<SharedString>,
     accent: bool,
+    large: bool,
     eyebrow: Option<SharedString>,
     meta: Option<AnyElement>,
+    byline: Option<AnyElement>,
     actions: Option<AnyElement>,
     circle: bool,
     explicit: bool,
@@ -241,8 +253,10 @@ impl PageHero {
             cover: None,
             fallback: None,
             accent: false,
+            large: false,
             eyebrow: None,
             meta: None,
+            byline: None,
             actions: None,
             circle: false,
             explicit: false,
@@ -279,6 +293,11 @@ impl PageHero {
         self
     }
 
+    pub(crate) fn large(mut self) -> Self {
+        self.large = true;
+        self
+    }
+
     pub(crate) fn eyebrow(mut self, eyebrow: impl Into<SharedString>) -> Self {
         self.eyebrow = Some(eyebrow.into());
         self
@@ -286,6 +305,12 @@ impl PageHero {
 
     pub(crate) fn meta(mut self, meta: impl IntoElement) -> Self {
         self.meta = Some(meta.into_any_element());
+        self
+    }
+
+    /// Who made it, under the title and above the meta strip.
+    pub(crate) fn byline(mut self, byline: impl IntoElement) -> Self {
+        self.byline = Some(byline.into_any_element());
         self
     }
 
@@ -309,9 +334,23 @@ impl RenderOnce for PageHero {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = *cx.theme();
 
-        let art = theme.metrics.cover;
+        let art = match self.large {
+            true => theme.metrics.cover * LARGE,
+            false => theme.metrics.cover,
+        };
         let drag_start = self.drag_start.map(Rc::from);
         let starter = drag_start.clone();
+        let title = match self.large {
+            true => theme.text(Text::Display) * BILLING,
+            false => theme.text(Text::Display),
+        };
+        let lift = self.large.then(|| BoxShadow {
+            color: theme.overlay,
+            offset: point(px(0.), art * LIFT),
+            blur_radius: art * LIFT_SPREAD,
+            spread_radius: px(0.),
+            inset: false,
+        });
 
         div()
             .id(self.id)
@@ -324,6 +363,9 @@ impl RenderOnce for PageHero {
             .child(
                 div()
                     .flex_none()
+                    .when_some(lift, |this, lift| {
+                        this.rounded(theme.radius * 1.5).shadow(vec![lift])
+                    })
                     .when_some(starter, |this, drag_start: Rc<DragStart>| {
                         this.on_mouse_down(MouseButton::Right, move |event, window, cx| {
                             drag_start(event, window, cx)
@@ -355,7 +397,8 @@ impl RenderOnce for PageHero {
                             .items_center()
                             .gap_3()
                             .min_w_0()
-                            .text_size(theme.text(Text::Display))
+                            .text_size(title)
+                            .face(ui::Face::Rounded)
                             .font_weight(FontWeight::BOLD)
                             .child(
                                 div()
@@ -373,8 +416,15 @@ impl RenderOnce for PageHero {
                                 this.child(div().flex_none().child(ExplicitBadge::new()))
                             }),
                     )
+                    .children(self.byline.map(|byline| {
+                        div()
+                            .min_w_0()
+                            .text_size(theme.text(Text::Large))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(byline)
+                    }))
                     .children(self.meta)
-                    .children(self.actions.map(|actions| div().pt_1().child(actions))),
+                    .children(self.actions.map(|actions| div().pt_2().child(actions))),
             )
     }
 }

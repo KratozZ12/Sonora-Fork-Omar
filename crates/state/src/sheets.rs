@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use music::{Lyrics as Sheet, LyricsHit};
 use serde::{Deserialize, Serialize};
 
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 const PASSING: bool = cfg!(debug_assertions);
 const CAPACITY: usize = 500;
 

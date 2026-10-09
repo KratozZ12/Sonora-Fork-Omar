@@ -8,11 +8,12 @@ use input::{
 use router::{Destination, NavigationEvent, SettingsTab, back, forward, navigate};
 use state::{
     ArtistDetail, Detail, GenreDetails, Genres, Home, Io, Library, Playback, Profile, Queue,
-    SYSTEM_FONT, Search, Session, SessionState, SideTab, SongDetail, Sonora,
+    SYSTEM_FONT, Samply, Search, Session, SessionState, SideTab, SongDetail, Sonora,
 };
 use ui::{ActiveTheme as _, Dismiss, Look, Theme, ThemeKind, clear_listing};
 
 use crate::chrome::{TitleBar, TitleBarEvent, TitleBarOptions, Toolbar, Tooled};
+use crate::screens::samply::SamplyView;
 use crate::screens::search::SearchView;
 use crate::shared::tracks::{LIBRARY_COLUMNS, album_columns};
 use crate::shells::Shell;
@@ -38,6 +39,7 @@ struct Screens {
     playlist: Option<Entity<DetailView>>,
     playlist_detail: Option<Entity<Detail>>,
     search: Entity<SearchView>,
+    samply: Entity<SamplyView>,
     genres: Entity<Genres>,
     genre: Option<Entity<GenreView>>,
     genre_detail: Option<Entity<GenreDetails>>,
@@ -129,7 +131,11 @@ impl Root {
 
         let queries = cx.new(|cx| Search::new(session.clone(), search_library, io.clone(), cx));
         let genres = cx.new(|cx| Genres::new(session.clone(), io.clone(), cx));
-        let search = cx.new(|cx| SearchView::new(queries, genres.clone(), playback.clone(), cx));
+        let search =
+            cx.new(|cx| SearchView::new(queries.clone(), genres.clone(), playback.clone(), cx));
+
+        let samply_projects = cx.new(|cx| Samply::new(session.clone(), io.clone(), cx));
+        let samply = cx.new(|cx| SamplyView::new(samply_projects, playback.clone(), cx));
 
         let settings = cx.new(|cx| SettingsView::new(session.clone(), playback.clone(), cx));
 
@@ -150,7 +156,7 @@ impl Root {
         });
         let fullscreen = cx.new(|cx| FullscreenView::new(playback.clone(), queue.clone(), cx));
 
-        let title_bar = cx.new(TitleBar::new);
+        let title_bar = cx.new(|cx| TitleBar::new(queries.clone(), playback.clone(), cx));
         cx.subscribe(&title_bar, |this, _, event, cx| match event {
             TitleBarEvent::ToggleSidebar => this
                 .shells
@@ -160,6 +166,12 @@ impl Root {
                 .shells
                 .workspace
                 .update(cx, |workspace, cx| workspace.toggle_sidebar_right(cx)),
+            TitleBarEvent::Search(query) => {
+                this.screens
+                    .search
+                    .update(cx, |search, cx| search.set_query(query.clone(), cx));
+                this.open_search(cx);
+            }
         })
         .detach();
 
@@ -218,6 +230,7 @@ impl Root {
                 playlist: None,
                 playlist_detail: None,
                 search,
+                samply,
                 genres,
                 genre: None,
                 genre_detail: None,
@@ -464,6 +477,11 @@ impl Root {
                 genre.into()
             }
             Destination::Search => self.screens.search.clone().into(),
+            Destination::Samply => {
+                let samply = self.screens.samply.clone();
+                samply.update(cx, |samply, cx| samply.refresh(cx));
+                samply.into()
+            }
             Destination::Settings(tab) => {
                 self.screens
                     .settings
@@ -506,12 +524,18 @@ const SCRIPTS: [&str; 18] = [
 
 fn ui_font(cx: &App) -> Font {
     let chosen = Sonora::global(cx).settings.read(cx).font();
-    match chosen == SYSTEM_FONT {
-        true => Font {
+    ui::find_faces(cx);
+    ui::set_chosen_font(chosen != SYSTEM_FONT);
+    match (chosen == SYSTEM_FONT, ui::face(ui::Face::Text)) {
+        (true, Some(apple)) => Font {
+            fallbacks: Some(scripts(true).clone()),
+            ..font(apple)
+        },
+        (true, None) => Font {
             fallbacks: Some(scripts(false).clone()),
             ..font(UI_FONT)
         },
-        false => Font {
+        (false, _) => Font {
             fallbacks: Some(scripts(true).clone()),
             ..font(SharedString::from(chosen.to_owned()))
         },

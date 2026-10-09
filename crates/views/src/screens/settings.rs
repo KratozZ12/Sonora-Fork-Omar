@@ -16,6 +16,7 @@ use i18n::{Language, t};
 use music::{AccountChoice, SignIn, SignInPrompt, WritingSystem};
 use router::{NavEntry, Screen, SettingsTab};
 use state::{AppSettings, Failure, Playback, SYSTEM_FONT, Session, SessionState, Sonora};
+use ui::Faced as _;
 use ui::{ActiveTheme as _, Scrollbar, Scroller, eyebrow};
 use ui::{
     Avatar, Button, InfoCard, Initials, Input, Look, MAX_FONT, MAX_LYRICS_SCALE, MAX_TRANSPARENCY,
@@ -679,6 +680,7 @@ impl SettingsView {
                         SessionState::SignedIn(profile) => div()
                             .child(profile.display_name.clone())
                             .text_size(theme.text(Text::Large))
+                            .face(ui::Face::Display)
                             .font_weight(FontWeight::SEMIBOLD)
                             .into_any_element(),
                         _ => Skeleton::new().w(px(140.)).h(px(14.)).into_any_element(),

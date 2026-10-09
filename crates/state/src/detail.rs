@@ -4,7 +4,9 @@ use gpui::{Context, Entity, Task};
 use i18n::t;
 use music::{Album, AlbumDetail, ArtistRef, Contributor, Playlist, PlaylistDetail, Track};
 
-use crate::{Io, Library, LibraryEvent, Session, SessionEvent, join, mosaic};
+use crate::{
+    Io, Library, LibraryEvent, Session, SessionEvent, Sonora, Stock, join, mosaic, splice,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Collection {
@@ -34,6 +36,7 @@ pub struct Detail {
     kind: Option<Collection>,
     album: Option<Album>,
     playlist: Option<Playlist>,
+    native: Vec<Track>,
     tracks: Vec<Track>,
     loading: bool,
     loaded: bool,
@@ -123,12 +126,27 @@ impl Detail {
         })
         .detach();
 
+        let settings = Sonora::global(cx).settings.clone();
+        cx.observe(&settings, |this, _, cx| {
+            if this.splice(cx) {
+                cx.notify();
+            }
+        })
+        .detach();
+        cx.observe(&library, |this, _, cx| {
+            if this.splice(cx) {
+                cx.notify();
+            }
+        })
+        .detach();
+
         Self {
             id: None,
             header: None,
             kind: None,
             album: None,
             playlist: None,
+            native: Vec::new(),
             tracks: Vec::new(),
             loading: false,
             loaded: false,
@@ -319,6 +337,35 @@ impl Detail {
         }));
     }
 
+    /// Lays the local songs grafted onto a streamed album into its tracklist.
+    /// Answers whether the list changed, so a settings save that touched
+    /// something else does not repaint the page.
+    fn splice(&mut self, cx: &mut Context<Self>) -> bool {
+        let (Some(Collection::Album), Some(id)) = (self.kind, self.id.as_deref()) else {
+            return false;
+        };
+        if music::is_local_id(id) || !self.loaded {
+            return false;
+        }
+        let settings = Sonora::global(cx).settings.read(cx);
+        let library = self.library.read(cx);
+        let grafted = settings
+            .grafts(Stock::Tracklist, id)
+            .iter()
+            .filter_map(|graft| Some((graft.at, library.local_track(&graft.id)?.clone())));
+        let spliced = splice(&self.native, grafted);
+        let same = spliced.len() == self.tracks.len()
+            && spliced
+                .iter()
+                .zip(&self.tracks)
+                .all(|(new, old)| new.id == old.id);
+        if same {
+            return false;
+        }
+        self.tracks = spliced;
+        true
+    }
+
     fn shows(&self, kind: Collection, id: &str) -> bool {
         let same = self.kind == Some(kind) && self.id.as_deref() == Some(id);
         same && (self.loading || self.loaded)
@@ -329,6 +376,7 @@ impl Detail {
             Loaded::Album(detail) => {
                 self.header = Some(album_header(&detail.album));
                 self.album = Some(detail.album.clone());
+                self.native = detail.tracks.clone();
                 self.tracks = detail.tracks.clone();
             }
             Loaded::Playlist(detail) => {
@@ -345,6 +393,7 @@ impl Detail {
             }
         }
         self.loaded = true;
+        self.splice(cx);
     }
 
     fn clear(&mut self) {
@@ -355,6 +404,7 @@ impl Detail {
         self.kind = None;
         self.album = None;
         self.playlist = None;
+        self.native.clear();
         self.tracks.clear();
         self.loading = false;
         self.loaded = false;

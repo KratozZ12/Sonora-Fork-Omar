@@ -30,6 +30,11 @@ nav-albums = Albums
 nav-playlists = Playlists
 nav-artists = Artists
 nav-local = Local Music
+nav-samply = Samply
+samply-unconfigured = Add a Samply token to see your projects
+samply-loading = Looking for your projects…
+samply-empty = No projects in this Samply account
+samply-refresh = Look again
 nav-back = Back
 nav-forward = Forward
 nav-sidebar = Toggle sidebar
@@ -123,6 +128,25 @@ menu-go-to-album = Go to album
 menu-go-to-artist = Go to artist
 menu-view-details = View details
 menu-copy-link = Copy link
+menu-add-to-discography = Add to a discography
+menu-remove-from-discography = Remove from this discography
+menu-add-to-album = Add to an album
+menu-remove-from-album = Remove from this album
+graft-discography-title = Add to a discography
+graft-album-title = Add to an album
+graft-search = Search the catalog
+graft-hint = Type a name to search
+graft-searching = Searching…
+graft-nothing = Nothing found
+graft-saved = { $count ->
+    [one] { $count } song in your library
+   *[other] { $count } songs in your library
+}
+detail-shuffle = Shuffle
+detail-runtime = { $hours ->
+    [0] { $minutes } min
+   *[other] { $hours } h { $minutes } min
+}
 menu-cut = Cut
 menu-copy = Copy
 menu-paste = Paste
@@ -293,6 +317,7 @@ artist-popular-eyebrow = Explore this artist
 artist-popular-empty = Nothing to play from this artist yet
 artist-popular-more = Show all
 artist-popular-less = Show less
+artist-related = Fans also like
 artist-releases = Releases
 artist-releases-more = Show all
 artist-releases-less = Show less
@@ -338,6 +363,7 @@ search-results = Results
 search-songs = Songs
 search-artists = Artists
 search-albums-playlists = Albums & playlists
+search-quick-albums = Albums
 search-tag = { $kind } ·
 search-saved =
     { $count ->
@@ -604,6 +630,7 @@ lyrics-failed = Could not reach the lyrics service
 lyrics-follow = Follow the song again
 lyrics-source = Lyrics from { $source }
 lyrics-writers = Written by { $writers }
+lyrics-source-pick = Choose a lyrics source
 
 update-available = Sonora { $version } is out
 update-detail = You are on { $running }. Read what changed, or update now.

@@ -403,6 +403,7 @@ mod tests {
                 cover_large: None,
                 biography: None,
                 monthly_listeners: None,
+                related: Vec::new(),
                 top_tracks: Vec::new(),
                 albums: Vec::new(),
             })

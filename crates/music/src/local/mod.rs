@@ -1,5 +1,5 @@
 mod client;
-mod playback;
+pub(crate) mod playback;
 mod scan;
 mod store;
 mod tags;

@@ -179,18 +179,6 @@ fn release_type(kind: AlbumType) -> ReleaseType {
 }
 
 fn cover(album: &AlbumMessage) -> Option<String> {
-    let smallest = album
-        .cover_group
-        .as_ref()?
-        .image
-        .iter()
-        .filter(|image| image.has_file_id())
-        .min_by_key(|image| image.width())?;
-
-    wire::image_url(smallest.file_id())
-}
-
-fn cover_large(album: &AlbumMessage) -> Option<String> {
     const HEADER: i32 = 300;
 
     let images = album.cover_group.as_ref()?.image.iter();
@@ -202,6 +190,18 @@ fn cover_large(album: &AlbumMessage) -> Option<String> {
         .or_else(|| usable.iter().max_by_key(|image| image.width()))?;
 
     wire::image_url(picked.file_id())
+}
+
+fn cover_large(album: &AlbumMessage) -> Option<String> {
+    let biggest = album
+        .cover_group
+        .as_ref()?
+        .image
+        .iter()
+        .filter(|image| image.has_file_id())
+        .max_by_key(|image| image.width())?;
+
+    wire::image_url(biggest.file_id())
 }
 
 fn non_empty(value: Option<&str>) -> Option<&str> {

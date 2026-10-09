@@ -5,7 +5,7 @@ use librespot_core::Session;
 use serde::Deserialize;
 
 use super::query;
-use crate::{Album, ArtistRef, ReleaseType};
+use crate::{Album, ArtistRef, ReleaseType, SavedArtist};
 
 pub(crate) struct Overview {
     pub(crate) name: String,
@@ -14,6 +14,7 @@ pub(crate) struct Overview {
     pub(crate) monthly_listeners: Option<u64>,
     pub(crate) tracks: Vec<(String, Option<u64>)>,
     pub(crate) albums: Vec<Album>,
+    pub(crate) related: Vec<SavedArtist>,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +30,33 @@ struct PathArtist {
     visuals: Visuals,
     discography: Option<Discography>,
     stats: Option<Stats>,
+    #[serde(rename = "relatedContent")]
+    related: Option<RelatedContent>,
+}
+
+#[derive(Deserialize)]
+struct RelatedContent {
+    #[serde(rename = "relatedArtists", default)]
+    artists: RelatedArtists,
+}
+
+#[derive(Default, Deserialize)]
+struct RelatedArtists {
+    #[serde(default)]
+    items: Vec<RelatedArtist>,
+}
+
+#[derive(Deserialize)]
+struct RelatedArtist {
+    id: String,
+    profile: RelatedProfile,
+    #[serde(default)]
+    visuals: Visuals,
+}
+
+#[derive(Deserialize)]
+struct RelatedProfile {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -208,6 +236,17 @@ fn overview(data: Data, artist_id: &str) -> Result<Overview> {
         monthly_listeners: artist.stats.and_then(|stats| stats.monthly_listeners),
         tracks,
         albums,
+        related: artist
+            .related
+            .into_iter()
+            .flat_map(|content| content.artists.items)
+            .map(|related| SavedArtist {
+                id: related.id,
+                name: related.profile.name,
+                cover: cover(&related.visuals.avatar.sources, false),
+                added_at: None,
+            })
+            .collect(),
     })
 }
 
@@ -269,13 +308,14 @@ fn date(date: &PathDate) -> String {
 }
 
 fn cover(sources: &[Image], large: bool) -> Option<String> {
+    let biggest = sources.iter().max_by_key(|image| image.height);
     let picked = match large {
-        true => sources
+        true => biggest,
+        false => sources
             .iter()
             .filter(|image| image.height >= 300)
             .min_by_key(|image| image.height)
-            .or_else(|| sources.iter().max_by_key(|image| image.height)),
-        false => sources.iter().min_by_key(|image| image.height),
+            .or(biggest),
     }?;
 
     Some(picked.url.clone())
@@ -299,13 +339,13 @@ mod tests {
     #[test]
     fn decodes_overview() {
         let data: Data = serde_json::from_slice(
-            br#"{"artistUnion":{"profile":{"name":"Artist","biography":{"text":"About"}},"visuals":{"avatarImage":{"sources":[{"height":640,"url":"large"},{"height":160,"url":"small"},{"height":320,"url":"header"}]}},"discography":{"topTracks":{"items":[{"track":{"uri":"spotify:track:abc","playcount":"57545277"}},{"track":{"uri":"spotify:track:def","playcount":null}}]},"albums":{"items":[{"releases":{"items":[{"id":"album","name":"Release","type":"ALBUM","date":{"day":2,"month":3,"year":2024},"coverArt":{"sources":[{"height":300,"url":"album-large"},{"height":64,"url":"album-small"}]},"label":"Label","copyright":{"items":[{"text":"Copyright"}]},"tracks":{"totalCount":12}}]}}]},"singles":{"items":[]},"compilations":{"items":[]}},"stats":{"monthlyListeners":1900430}}}"#,
+            br#"{"artistUnion":{"profile":{"name":"Artist","biography":{"text":"About"}},"visuals":{"avatarImage":{"sources":[{"height":640,"url":"large"},{"height":160,"url":"small"},{"height":320,"url":"header"}]}},"discography":{"topTracks":{"items":[{"track":{"uri":"spotify:track:abc","playcount":"57545277"}},{"track":{"uri":"spotify:track:def","playcount":null}}]},"albums":{"items":[{"releases":{"items":[{"id":"album","name":"Release","type":"ALBUM","date":{"day":2,"month":3,"year":2024},"coverArt":{"sources":[{"height":300,"url":"album-large"},{"height":64,"url":"album-small"}]},"label":"Label","copyright":{"items":[{"text":"Copyright"}]},"tracks":{"totalCount":12}}]}}]},"singles":{"items":[]},"compilations":{"items":[]}},"stats":{"monthlyListeners":1900430},"relatedContent":{"relatedArtists":{"items":[{"id":"near","profile":{"name":"Near"},"visuals":{"avatarImage":{"sources":[{"height":320,"url":"near-face"}]}}}]}}}}"#,
         )
         .unwrap();
         let overview = overview(data, "artist").unwrap();
 
         assert_eq!(overview.name, "Artist");
-        assert_eq!(overview.cover_large.as_deref(), Some("header"));
+        assert_eq!(overview.cover_large.as_deref(), Some("large"));
         assert_eq!(overview.biography.as_deref(), Some("About"));
         assert_eq!(overview.monthly_listeners, Some(1_900_430));
         assert_eq!(
@@ -316,8 +356,10 @@ mod tests {
             ]
         );
         assert_eq!(overview.albums.len(), 1);
+        assert_eq!(overview.related[0].name, "Near");
+        assert_eq!(overview.related[0].cover.as_deref(), Some("near-face"));
         assert_eq!(overview.albums[0].name, "Release");
-        assert_eq!(overview.albums[0].cover.as_deref(), Some("album-small"));
+        assert_eq!(overview.albums[0].cover.as_deref(), Some("album-large"));
         assert_eq!(
             overview.albums[0].cover_large.as_deref(),
             Some("album-large")

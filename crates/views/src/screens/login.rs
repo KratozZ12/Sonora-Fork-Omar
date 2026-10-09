@@ -8,6 +8,7 @@ use i18n::t;
 use music::{AccountChoice, SignIn, SignInPrompt};
 use state::{Session, SessionState, Sonora, Usage};
 use ui::ActiveTheme as _;
+use ui::Faced as _;
 use ui::{Button, Checkbox, Input, TabBar, Text};
 
 const COLUMN: Pixels = px(280.);
@@ -211,6 +212,7 @@ impl LoginView {
             .child(
                 div()
                     .text_size(theme.text(Text::Large))
+                    .face(ui::Face::Display)
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(SharedString::from(name.to_string())),
             )
@@ -269,6 +271,7 @@ impl LoginView {
                     .child(
                         div()
                             .text_size(theme.text(Text::Title))
+                            .face(ui::Face::Rounded)
                             .font_weight(FontWeight::BOLD)
                             .child(SharedString::from(code.clone())),
                     )
@@ -422,6 +425,7 @@ impl Render for LoginView {
                         div()
                             .child("Sonora")
                             .text_size(theme.text(Text::Display))
+                            .face(ui::Face::Rounded)
                             .font_weight(FontWeight::BOLD),
                     )
                     .child(

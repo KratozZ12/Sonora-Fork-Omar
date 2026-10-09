@@ -1,19 +1,20 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Entity, Pixels, Point, Render, ScrollHandle, SharedString,
-    WeakEntity, Window, div, px,
+    WeakEntity, Window, div,
 };
 
 use i18n::t;
 use music::{Album, Playlist, Track};
 use router::{Destination, navigate};
-use state::{AppSettings, Collection, Detail, LibraryEvent, Origin, Playback, Sonora};
+use state::{AppSettings, Collection, Detail, LibraryEvent, Origin, Playback, Sonora, Stock};
 use ui::{
     ActiveTheme as _, Button, InlineLink, InlineLinks, Menu, Picker, Popovers, Popup, SortAxis,
+    Text,
 };
 use ui::{
     ColumnSpec, Listing as _, MIN_CONTENT, Pin, PinKind, Scrollbar, Scroller, TableDelegate,
-    TableEvent, TableState, Toggle, clock, table,
+    TableEvent, TableState, Toggle, table,
 };
 
 use crate::shared::menus::{album_menu, playlist_menu};
@@ -21,9 +22,11 @@ use crate::shared::menus::{album_menu, playlist_menu};
 use crate::chrome::tools::{self, Sliders};
 use crate::chrome::{Chrome, Searchable, Toolbar, Tooled};
 use crate::shared::confirm::Confirm;
-use crate::shared::hero::{HeroMetaStrip, HeroPlayButton, PageHero, release_date_label};
+use crate::shared::fluid::Fluid;
+use crate::shared::hero::{HeroMetaStrip, HeroPlayButton, PageHero, SOFT, release_date_label};
 use crate::shared::tracks::{
-    PlaybackStatus, TrackField, TrackSource, Tracks, drop_picked, playback_status, playlist_columns,
+    self, PlaybackStatus, TrackField, TrackSource, Tracks, drop_picked, playback_status,
+    playlist_columns,
 };
 use crate::shared::{cells, page};
 
@@ -60,6 +63,7 @@ pub(crate) struct DetailView {
     toolbar: Entity<Toolbar>,
     popovers: Popovers,
     sliders: Sliders,
+    fluid: Entity<Fluid>,
     me: WeakEntity<Self>,
 }
 
@@ -118,7 +122,10 @@ impl DetailView {
             let source = source.table(cx.weak_entity());
             let mut delegate = TableDelegate::new(source, width, cx);
             delegate.set_layout(saved, cx);
-            TableState::new(delegate, cx).follow(scroll)
+            TableState::new(delegate, cx)
+                .follow(scroll)
+                .headless()
+                .floating()
         });
 
         cx.observe(&detail, |this, _, cx| {
@@ -129,6 +136,7 @@ impl DetailView {
             this.restore_sorting(cx);
             this.retune(cx);
             this.rebuild(cx);
+            this.recolour(cx);
             cx.notify();
         })
         .detach();
@@ -186,6 +194,14 @@ impl DetailView {
                 page::play_or_toggle(&this.table, &this.playback, *display, cx)
             }
             TableEvent::Removed => drop_picked(&this.table, cx),
+            TableEvent::Dropped { id, row } => {
+                let Some(album) = this.detail.read(cx).id().map(str::to_owned) else {
+                    return;
+                };
+                this.settings.update(cx, |settings, cx| {
+                    settings.graft(Stock::Tracklist, &album, id, *row, cx)
+                });
+            }
             _ => this.persist(cx),
         })
         .detach();
@@ -207,6 +223,7 @@ impl DetailView {
             toolbar,
             popovers: Popovers::default(),
             sliders: Sliders::default(),
+            fluid: cx.new(|_| Fluid::new()),
             me: me.downgrade(),
         }
     }
@@ -233,6 +250,15 @@ impl DetailView {
             table.delegate_mut().clear_selection();
             table.rebuild(cx);
         });
+    }
+
+    fn recolour(&mut self, cx: &mut Context<Self>) {
+        let cover = self
+            .detail
+            .read(cx)
+            .header()
+            .and_then(|header| header.cover.clone());
+        self.fluid.update(cx, |fluid, cx| fluid.paint(cover, cx));
     }
 
     fn sort_key(&self, cx: &App) -> String {
@@ -265,8 +291,7 @@ impl DetailView {
     }
 
     fn header(&self, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
-        let muted = theme.muted_foreground;
+        let theme = *cx.theme();
         let header = self.detail.read(cx).header();
         let kind = header
             .map(|header| header.kind)
@@ -288,35 +313,34 @@ impl DetailView {
             Collection::Album => (t!("detail-album"), t!("detail-play-album")),
         };
 
-        let mut strip = HeroMetaStrip::new();
-        if let Some(artist) = artist {
-            strip = strip.item(cells::artist_links(
-                "detail-artist",
-                artist_refs,
-                artist,
-                muted,
-            ));
-        }
-        if let Some(owner) = owner {
-            strip = strip.item(
+        let byline = match (artist, owner) {
+            (Some(artist), _) => Some(
+                cells::artist_links("detail-artist", artist_refs, artist, theme.foreground)
+                    .into_any_element(),
+            ),
+            (None, Some(owner)) => Some(
                 InlineLinks::new(
                     SharedString::new_static("detail-owner"),
                     [InlineLink::new(owner.name.clone(), Some(owner.id.into()))],
                     owner.name,
-                    muted,
+                    theme.foreground,
                 )
                 .on_click(|id, cx| navigate(Destination::User(id), cx))
-                .truncate(),
-            );
-        }
-        if let Some(release_date) = release_date {
-            strip = strip.text(release_date_label(release_date));
+                .truncate()
+                .into_any_element(),
+            ),
+            (None, None) => None,
+        };
+
+        let mut strip = HeroMetaStrip::new();
+        if let Some(year) = release_date.and_then(|date| date.split('-').next()) {
+            strip = strip.text(year.to_owned());
         }
         for item in meta {
             strip = strip.text(item);
         }
         if !duration.is_zero() {
-            strip = strip.text(clock(duration));
+            strip = strip.text(runtime(duration));
         }
 
         let overflow = self.menu(cx).map(|menu| {
@@ -336,6 +360,7 @@ impl DetailView {
                 &self.table,
                 self.playback.clone(),
             ))
+            .child(self.shuffle_button(cx))
             .children(self.library_button(cx))
             .children(overflow);
 
@@ -351,8 +376,10 @@ impl DetailView {
         let view = self.me.clone();
         PageHero::new("detail-hero", title)
             .pin(pin)
+            .large()
             .cover(cover)
             .eyebrow(eyebrow)
+            .when_some(byline, |hero, byline| hero.byline(byline))
             .meta(strip)
             .actions(actions)
             .drag_start(move |event, window, cx| {
@@ -389,7 +416,8 @@ impl DetailView {
         };
 
         let heart = Button::new("detail-toggle-library")
-            .outline()
+            .ghost()
+            .bg(theme.foreground.opacity(SOFT))
             .icon(match saved {
                 true => "icons/heart-filled.svg",
                 false => "icons/heart.svg",
@@ -422,6 +450,68 @@ impl DetailView {
         )
     }
 
+    fn shuffle_button(&self, cx: &App) -> Button {
+        let theme = *cx.theme();
+        let table = self.table.clone();
+        let playback = self.playback.clone();
+        let playable = tracks::first_playable(&table, cx).is_some();
+
+        Button::new("detail-shuffle")
+            .ghost()
+            .bg(theme.foreground.opacity(SOFT))
+            .icon("icons/shuffle.svg")
+            .label(t!("detail-shuffle"))
+            .disabled(!playable)
+            .on_click(move |_, _, cx| {
+                let queued = tracks::ordered(&table, cx);
+                let from = tracks::whence(&table, cx);
+                let queue = Sonora::global(cx).queue.clone();
+                queue.update(cx, |queue, cx| queue.set_shuffle(true, cx));
+                playback.update(cx, |playback, cx| playback.start_all(queued, from, cx));
+            })
+    }
+
+    fn footer(&self, cx: &App) -> Option<AnyElement> {
+        let theme = *cx.theme();
+        let detail = self.detail.read(cx);
+        let album = detail.album()?;
+        let listed = detail.tracks();
+        let duration: std::time::Duration = listed.iter().map(|track| track.duration).sum();
+        let date = match album.release_date.is_empty() {
+            true => (album.year > 0).then(|| SharedString::from(album.year.to_string())),
+            false => Some(release_date_label(&album.release_date)),
+        };
+        let mut tally = HeroMetaStrip::new().text(t!("count-songs", count = listed.len()));
+        if !duration.is_zero() {
+            tally = tally.text(runtime(duration));
+        }
+        let credits = (!album.label.is_empty())
+            .then(|| album.label.clone())
+            .into_iter()
+            .chain(album.copyrights.iter().cloned())
+            .map(SharedString::from);
+
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .pt_8()
+                .px(theme.metrics.pad)
+                .text_size(theme.text(Text::Small))
+                .text_color(theme.muted_foreground)
+                .children(date.map(|date| {
+                    div()
+                        .text_color(theme.foreground)
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(date)
+                }))
+                .child(tally)
+                .children(credits.map(|credit| div().pt_1().child(credit)))
+                .into_any_element(),
+        )
+    }
+
     fn menu(&self, cx: &App) -> Option<Menu> {
         let detail = self.detail.read(cx);
         let id = detail.id()?.to_owned();
@@ -444,11 +534,7 @@ impl Render for DetailView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.table.claim(cx);
         let inset = cx.theme().metrics.inset;
-        let width = cells::content_width(window, Pixels::ZERO, cx);
-        if (width - self.width).abs() >= px(0.5) {
-            self.width = width;
-            self.table.set_width(width, cx);
-        }
+        page::resize(&self.table, &mut self.width, inset, window, cx);
 
         let scroll = self.scrollbar.read(cx).scroll().clone();
         let viewport = page::viewport(&scroll, inset, window);
@@ -468,12 +554,13 @@ impl Render for DetailView {
         div()
             .relative()
             .size_full()
+            .child(self.fluid.clone())
             .child(
                 Scroller::new("detail-page", &self.scrollbar)
-                    .pt(inset)
-                    .pb(inset)
-                    .child(div().px(inset).child(self.header(cx)))
-                    .child(table(&self.table)),
+                    .p(inset)
+                    .child(self.header(cx))
+                    .child(table(&self.table))
+                    .children(self.footer(cx)),
             )
             .when_some(context_menu, |this, menu| this.child(menu))
     }
@@ -563,4 +650,13 @@ impl Tooled for DetailView {
             ),
         ]
     }
+}
+
+fn runtime(duration: std::time::Duration) -> SharedString {
+    let minutes = duration.as_secs().div_ceil(60);
+    t!(
+        "detail-runtime",
+        hours = minutes / 60,
+        minutes = minutes % 60
+    )
 }

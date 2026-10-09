@@ -5,8 +5,8 @@ use ui::{
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Context, DragMoveEvent, ElementId, Entity, Hsla, MouseButton, MouseDownEvent,
-    Pixels, Point, Render, ScrollHandle,
+    AnyElement, App, Context, DragMoveEvent, ElementId, Entity, FontWeight, Hsla, MouseButton,
+    MouseDownEvent, Pixels, Point, Render, ScrollHandle,
 };
 use gpui::{Window, div, px};
 use router::{
@@ -16,7 +16,7 @@ use state::{AppSettings, Origin, Playback, PlaybackState, Session, Sonora};
 
 use crate::shared::menus::{ItemMenu, pin_menu};
 
-const NAV: [(Option<NavEntry>, &str, Destination); 6] = [
+const NAV: [(Option<NavEntry>, &str, Destination); 7] = [
     (Some(NavEntry::Home), "icons/house.svg", Destination::Home),
     (
         Some(NavEntry::Search),
@@ -34,6 +34,11 @@ const NAV: [(Option<NavEntry>, &str, Destination); 6] = [
         Destination::Local(LocalTab::Songs),
     ),
     (
+        Some(NavEntry::Samply),
+        "icons/link.svg",
+        Destination::Samply,
+    ),
+    (
         Some(NavEntry::History),
         "icons/rotate-ccw-clock.svg",
         Destination::History,
@@ -45,27 +50,47 @@ const NAV: [(Option<NavEntry>, &str, Destination); 6] = [
     ),
 ];
 
-const LIBRARY_TABS: [(&str, LibraryTab); 4] = [
-    ("nav-favorites", LibraryTab::Songs),
-    ("nav-albums", LibraryTab::Albums),
-    ("nav-artists", LibraryTab::Artists),
-    ("nav-playlists", LibraryTab::Playlists),
+const LIBRARY_TABS: [(&str, &str, LibraryTab); 4] = [
+    ("nav-favorites", "icons/heart.svg", LibraryTab::Songs),
+    ("nav-albums", "icons/disc-3.svg", LibraryTab::Albums),
+    ("nav-artists", "icons/user-round.svg", LibraryTab::Artists),
+    (
+        "nav-playlists",
+        "icons/list-music.svg",
+        LibraryTab::Playlists,
+    ),
 ];
 
-const LOCAL_TABS: [(&str, LocalTab); 5] = [
-    ("nav-favorites", LocalTab::Favorites),
-    ("nav-songs", LocalTab::Songs),
-    ("nav-albums", LocalTab::Albums),
-    ("nav-artists", LocalTab::Artists),
-    ("nav-playlists", LocalTab::Playlists),
+const LOCAL_TABS: [(&str, &str, LocalTab); 5] = [
+    ("nav-favorites", "icons/heart.svg", LocalTab::Favorites),
+    ("nav-songs", "icons/music.svg", LocalTab::Songs),
+    ("nav-albums", "icons/disc-3.svg", LocalTab::Albums),
+    ("nav-artists", "icons/user-round.svg", LocalTab::Artists),
+    ("nav-playlists", "icons/list-music.svg", LocalTab::Playlists),
 ];
 
-const SETTINGS_TABS: [(&str, SettingsTab); 5] = [
-    ("settings-tab-general", SettingsTab::General),
-    ("settings-tab-appearance", SettingsTab::Appearance),
-    ("settings-tab-playback", SettingsTab::Playback),
-    ("settings-tab-privacy", SettingsTab::Privacy),
-    ("settings-tab-about", SettingsTab::About),
+const SETTINGS_TABS: [(&str, &str, SettingsTab); 5] = [
+    (
+        "settings-tab-general",
+        "icons/sliders-horizontal.svg",
+        SettingsTab::General,
+    ),
+    (
+        "settings-tab-appearance",
+        "icons/palette.svg",
+        SettingsTab::Appearance,
+    ),
+    (
+        "settings-tab-playback",
+        "icons/play.svg",
+        SettingsTab::Playback,
+    ),
+    (
+        "settings-tab-privacy",
+        "icons/shield.svg",
+        SettingsTab::Privacy,
+    ),
+    ("settings-tab-about", "icons/info.svg", SettingsTab::About),
 ];
 
 const MIN_WIDTH: Pixels = px(160.);
@@ -358,6 +383,7 @@ impl Render for SidebarLeft {
         let shown = |entry: NavEntry, cx: &App| self.settings.read(cx).nav_shown(entry.id());
 
         let mut rows: Vec<AnyElement> = Vec::new();
+        let mut dock: Vec<AnyElement> = Vec::new();
         for (index, (entry, icon, destination)) in NAV.into_iter().enumerate() {
             let key = entry.map_or("nav-settings", NavEntry::key);
             if entry.is_some_and(|entry| !shown(entry, cx)) {
@@ -385,16 +411,12 @@ impl Render for SidebarLeft {
                 if self.library_open {
                     rows.push(
                         Tabs::new()
-                            .items(LIBRARY_TABS.into_iter().map(|(name, tab)| {
+                            .items(LIBRARY_TABS.into_iter().map(|(name, icon, tab)| {
                                 let chosen = current == Destination::Library(tab);
-                                let tint = if chosen { foreground } else { muted };
 
-                                nav_row(name, name, tint, sidebar_accent)
-                                    .flex_1()
-                                    .when(chosen, |button| button.bg(sidebar_accent))
-                                    .on_click(move |_, _, cx| {
-                                        navigate(Destination::Library(tab), cx)
-                                    })
+                                sub_row(name, name, icon, chosen, &theme).on_click(
+                                    move |_, _, cx| navigate(Destination::Library(tab), cx),
+                                )
                             }))
                             .into_any_element(),
                     );
@@ -420,27 +442,16 @@ impl Render for SidebarLeft {
                 if self.local_open {
                     rows.push(
                         Tabs::new()
-                            .items(
-                                LOCAL_TABS
-                                    .into_iter()
-                                    .enumerate()
-                                    .map(|(slot, (name, tab))| {
-                                        let chosen = current == Destination::Local(tab);
-                                        let tint = if chosen { foreground } else { muted };
+                            .items(LOCAL_TABS.into_iter().enumerate().map(
+                                |(slot, (name, icon, tab))| {
+                                    let chosen = current == Destination::Local(tab);
 
-                                        nav_row(
-                                            ("local-tab", slot as u32),
-                                            name,
-                                            tint,
-                                            sidebar_accent,
-                                        )
-                                        .flex_1()
-                                        .when(chosen, |button| button.bg(sidebar_accent))
-                                        .on_click(
-                                            move |_, _, cx| navigate(Destination::Local(tab), cx),
-                                        )
-                                    }),
-                            )
+                                    sub_row(("local-tab", slot as u32), name, icon, chosen, &theme)
+                                        .on_click(move |_, _, cx| {
+                                            navigate(Destination::Local(tab), cx)
+                                        })
+                                },
+                            ))
                             .into_any_element(),
                     );
                 }
@@ -451,7 +462,7 @@ impl Render for SidebarLeft {
                 let inside = matches!(current, Destination::Settings(_));
                 let text = if inside { foreground } else { muted };
 
-                rows.push(
+                dock.push(
                     nav_row(index, key, text, sidebar_accent)
                         .icon(icon)
                         .trailing(chevron(self.settings_open))
@@ -463,18 +474,14 @@ impl Render for SidebarLeft {
                 );
 
                 if self.settings_open {
-                    rows.push(
+                    dock.push(
                         Tabs::new()
-                            .items(SETTINGS_TABS.into_iter().map(|(name, tab)| {
+                            .items(SETTINGS_TABS.into_iter().map(|(name, icon, tab)| {
                                 let chosen = current == Destination::Settings(tab);
-                                let tint = if chosen { foreground } else { muted };
 
-                                nav_row(name, name, tint, sidebar_accent)
-                                    .flex_1()
-                                    .when(chosen, |button| button.bg(sidebar_accent))
-                                    .on_click(move |_, _, cx| {
-                                        navigate(Destination::Settings(tab), cx)
-                                    })
+                                sub_row(name, name, icon, chosen, &theme).on_click(
+                                    move |_, _, cx| navigate(Destination::Settings(tab), cx),
+                                )
                             }))
                             .into_any_element(),
                     );
@@ -484,14 +491,21 @@ impl Render for SidebarLeft {
 
             let active = destination.same_section(&current);
             let text = if active { foreground } else { muted };
+            let searched = matches!(destination, Destination::Search);
 
             rows.push(
                 nav_row(index, key, text, sidebar_accent)
                     .icon(icon)
-                    .when(active, |button| button.bg(sidebar_accent))
+                    .when(active, |button| {
+                        button.bg(sidebar_accent).font_weight(FontWeight::SEMIBOLD)
+                    })
                     .on_click(move |_, _, cx| navigate(destination.clone(), cx))
                     .into_any_element(),
             );
+            // the two pages you reach first stand apart from the shelves
+            if searched {
+                rows.push(div().h_2().flex_none().into_any_element());
+            }
         }
 
         rows.extend(self.pins(window, cx));
@@ -544,6 +558,20 @@ impl Render for SidebarLeft {
                             .children(rows),
                     ),
             )
+            .when(!dock.is_empty(), |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .flex_col()
+                        .gap_1()
+                        .w_full()
+                        .p_3()
+                        .border_t_1()
+                        .border_color(sidebar_border)
+                        .children(dock),
+                )
+            })
             .children(self.menu(cx));
 
         match overlaid {
@@ -607,6 +635,27 @@ fn chevron(open: bool) -> &'static str {
         true => "icons/chevron-down.svg",
         false => "icons/chevron-right.svg",
     }
+}
+
+fn sub_row(
+    id: impl Into<ElementId>,
+    key: &'static str,
+    icon: &'static str,
+    chosen: bool,
+    theme: &ui::Theme,
+) -> Button {
+    let tint = match chosen {
+        true => theme.foreground,
+        false => theme.muted_foreground,
+    };
+    nav_row(id, key, tint, theme.sidebar_accent)
+        .icon(icon)
+        .flex_1()
+        .when(chosen, |button| {
+            button
+                .bg(theme.sidebar_accent)
+                .font_weight(FontWeight::SEMIBOLD)
+        })
 }
 
 fn nav_row(id: impl Into<ElementId>, key: &'static str, tint: Hsla, accent: Hsla) -> Button {

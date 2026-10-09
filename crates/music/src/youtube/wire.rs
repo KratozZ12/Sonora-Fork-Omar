@@ -140,6 +140,7 @@ pub fn artist(source: ytmusic::Artist) -> Artist {
         cover_large: cover_large(&source.thumbnails),
         biography: source.description,
         monthly_listeners: None,
+        related: Vec::new(),
         top_tracks,
         albums,
     }

@@ -52,15 +52,17 @@ pub enum NavEntry {
     Library,
     History,
     Local,
+    Samply,
 }
 
 impl NavEntry {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Home,
         Self::Search,
         Self::Library,
         Self::History,
         Self::Local,
+        Self::Samply,
     ];
 
     pub fn id(self) -> &'static str {
@@ -70,6 +72,7 @@ impl NavEntry {
             Self::Library => "library",
             Self::History => "history",
             Self::Local => "local",
+            Self::Samply => "samply",
         }
     }
 
@@ -80,6 +83,7 @@ impl NavEntry {
             Self::Library => "nav-library",
             Self::History => "nav-history",
             Self::Local => "nav-local",
+            Self::Samply => "nav-samply",
         }
     }
 }
@@ -94,10 +98,11 @@ pub enum Screen {
     Playlists,
     Artists,
     Imported,
+    Samply,
 }
 
 impl Screen {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Home,
         Self::Search,
         Self::Songs,
@@ -105,6 +110,7 @@ impl Screen {
         Self::Artists,
         Self::Playlists,
         Self::Imported,
+        Self::Samply,
         Self::History,
     ];
 
@@ -118,6 +124,7 @@ impl Screen {
             Self::Playlists => "playlists",
             Self::Artists => "artists",
             Self::Imported => "imported",
+            Self::Samply => "samply",
         }
     }
 
@@ -131,6 +138,7 @@ impl Screen {
             Self::Playlists => "nav-playlists",
             Self::Artists => "nav-artists",
             Self::Imported => "nav-local",
+            Self::Samply => "nav-samply",
         }
     }
 
@@ -148,6 +156,7 @@ impl Screen {
             Self::Playlists => Destination::Library(LibraryTab::Playlists),
             Self::Artists => Destination::Library(LibraryTab::Artists),
             Self::Imported => Destination::Local(LocalTab::Songs),
+            Self::Samply => Destination::Samply,
         }
     }
 }
@@ -167,6 +176,7 @@ pub enum Destination {
     History,
     Library(LibraryTab),
     Local(LocalTab),
+    Samply,
     Album(SharedString),
     Song(SharedString),
     Playlist(SharedString),

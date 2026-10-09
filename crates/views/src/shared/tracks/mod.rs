@@ -329,6 +329,47 @@ impl TrackSource {
             track.explicit,
             None,
             self.liked_button(cell, track, cx),
+            self.credit(track, cx),
+            cx,
+        )
+    }
+
+    /// The artists to print under a title, if they belong there.
+    ///
+    /// A table that carries an artists column of its own has nothing to add.
+    /// Without one the names would otherwise be lost, so they move under the
+    /// title — except on a page that already names the artist above the list,
+    /// where repeating it on every row says nothing. A guest on one track is
+    /// exactly the case worth showing, and that is what survives this.
+    fn credit(&self, track: &Track, cx: &App) -> Option<AnyElement> {
+        let carried = self
+            .columns
+            .iter()
+            .any(|column| column.field == TrackField::Artists);
+        let named = self
+            .album
+            .as_ref()
+            .and_then(|detail| detail.read(cx).header()?.artist.clone())
+            .or_else(|| {
+                let origin = self.whence(cx)?;
+                match origin.whence {
+                    state::Whence::Artist => origin.name.map(|name| name.to_string()),
+                    _ => None,
+                }
+            });
+        if !credited(&track.artists, carried, named.as_deref()) {
+            return None;
+        }
+
+        Some(
+            cells::artist_links(
+                SharedString::new_static("track-credit"),
+                track.artist_refs.clone(),
+                track.artists.clone(),
+                cx.theme().muted_foreground,
+            )
+            .truncate()
+            .into_any_element(),
         )
     }
 
@@ -370,6 +411,36 @@ impl TrackSource {
                         return;
                     };
                     library.update(cx, |library, cx| library.toggle(track, cx));
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// The button at the end of a row that opens the menu the right button gives.
+    ///
+    /// It rests out of sight and appears with the row under the pointer, the way
+    /// the like button in the title does, so a resting list stays quiet.
+    fn row_menu(&self, cell: &Cell<TrackField>, cx: &App) -> Option<AnyElement> {
+        let table = self.table.clone()?;
+        let theme = *cx.theme();
+        let row = cell.row;
+
+        Some(
+            Button::new(("track-overflow", cell.row))
+                .ghost()
+                .backgroundless()
+                .small()
+                .icon("icons/ellipsis.svg")
+                .tooltip("common-more")
+                .tint(theme.muted_foreground)
+                .invisible()
+                .group_hover(ROW_GROUP, |style| style.visible())
+                .on_click(move |event, _, cx| {
+                    cx.stop_propagation();
+                    let at = event.position();
+                    table
+                        .update(cx, |table, cx| table.open_menu(row, at, cx))
+                        .ok();
                 })
                 .into_any_element(),
         )
@@ -509,6 +580,19 @@ impl TableSource for TrackSource {
         self.provider.tracks(cx).get(row)?.pin()
     }
 
+    fn accepts(&self, pin: &Pin, cx: &App) -> bool {
+        let Some(detail) = &self.album else {
+            return false;
+        };
+        let detail = detail.read(cx);
+        detail.id().is_some_and(|id| !music::is_local_id(id))
+            && music::is_local_id(&pin.id)
+            && detail
+                .tracks()
+                .iter()
+                .any(|track| track.id.as_deref() == Some(pin.id.as_str()))
+    }
+
     fn cell(&self, cell: Cell<TrackField>, cx: &mut App) -> AnyElement {
         let muted = cx.theme().muted_foreground;
 
@@ -548,7 +632,10 @@ impl TableSource for TrackSource {
                 track.playcount.map(cells::count).unwrap_or_default(),
                 detail,
             ),
-            TrackField::Duration => cells::dim(&cell, clock(track.duration), detail),
+            TrackField::Duration => match self.row_menu(&cell, cx) {
+                Some(button) => cells::trailing(&cell, clock(track.duration), detail, button),
+                None => cells::dim(&cell, clock(track.duration), detail),
+            },
             TrackField::Index => cells::blank(&cell),
         }
     }
@@ -598,6 +685,48 @@ impl TableSource for TrackSource {
 
     fn group(&self, field: TrackField, row: usize, cx: &App) -> Option<SharedString> {
         sort::group(self.provider.tracks(cx), field, row)
+    }
+}
+
+/// Whether a track's artists belong under its title.
+///
+/// `carried` says the table already prints them in a column of its own, and
+/// `named` is the artist the page names above the list, if it names one.
+fn credited(artists: &str, carried: bool, named: Option<&str>) -> bool {
+    !carried && !artists.is_empty() && named != Some(artists)
+}
+
+#[cfg(test)]
+mod credit {
+    use super::credited;
+
+    #[test]
+    fn a_column_of_their_own_keeps_the_names_out_of_the_title() {
+        assert!(!credited("Kanye West", true, None));
+    }
+
+    #[test]
+    fn without_a_column_the_names_move_under_the_title() {
+        assert!(credited("Kanye West", false, None));
+    }
+
+    #[test]
+    fn the_artist_the_page_already_names_is_not_repeated_on_every_row() {
+        assert!(!credited("Kanye West", false, Some("Kanye West")));
+    }
+
+    #[test]
+    fn a_guest_on_one_track_is_still_shown() {
+        assert!(credited(
+            "Kanye West, Travis Scott",
+            false,
+            Some("Kanye West")
+        ));
+    }
+
+    #[test]
+    fn a_track_with_no_artists_adds_no_line() {
+        assert!(!credited("", false, None));
     }
 }
 

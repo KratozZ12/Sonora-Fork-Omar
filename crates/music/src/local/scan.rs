@@ -81,20 +81,21 @@ fn scan_artist(dir: &Path, cache_dir: &Path, scanned: &mut Scanned) {
         scanned.portraits.insert(artist.clone(), portrait);
     }
 
-    for entry in entries(dir) {
-        if entry.is_file() {
-            scanned.tracks.extend(wire::track_from_file(
-                &entry,
-                Some(&artist),
-                None,
-                cache_dir,
-            ));
-            continue;
-        }
-        if !entry.is_dir() {
-            continue;
-        }
-        scan_album(&entry, &artist, cache_dir, scanned);
+    scan_albums(dir, &artist, cache_dir, scanned);
+}
+
+/// Every folder holding audio of its own is an album, however deep it sits.
+///
+/// A library laid out as artist/album, one that keeps its albums another folder
+/// or two down, and a set split into disc folders all arrive here the same way;
+/// only the depth told them apart before, and anything deeper was dropped.
+fn scan_albums(dir: &Path, artist: &str, cache_dir: &Path, scanned: &mut Scanned) {
+    let entries = entries(dir);
+    if entries.iter().any(|entry| entry.is_file()) {
+        scan_album(dir, artist, cache_dir, scanned);
+    }
+    for entry in entries.into_iter().filter(|entry| entry.is_dir()) {
+        scan_albums(&entry, artist, cache_dir, scanned);
     }
 }
 

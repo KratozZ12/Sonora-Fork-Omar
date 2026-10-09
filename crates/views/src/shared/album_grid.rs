@@ -4,15 +4,18 @@ use gpui::prelude::*;
 use gpui::{AnyElement, App, Entity, Pixels, Point, RenderOnce, Window, div, px};
 use music::Album;
 use state::Playback;
-use ui::Card;
+use ui::{Card, DraggedPin};
 
 use crate::shared::cards;
 
 pub(crate) const CARD_MIN: Pixels = px(130.);
 pub(crate) const CARD_MAX: Pixels = px(190.);
 const CARD_GAP: Pixels = px(32.);
+const LANDING: f32 = 0.45;
 
 type ContextMenu = Rc<dyn Fn(Album, Point<Pixels>, &mut App)>;
+type Accepts = Rc<dyn Fn(&str) -> bool>;
+type Moved = Rc<dyn Fn(String, usize, &mut App)>;
 
 #[derive(Clone, Copy)]
 pub(crate) struct CardLayout {
@@ -80,6 +83,7 @@ pub(crate) struct AlbumGrid {
     albums: Vec<(usize, Album)>,
     playback: Entity<Playback>,
     on_context: Option<ContextMenu>,
+    on_move: Option<(Accepts, Moved)>,
 }
 
 impl AlbumGrid {
@@ -95,7 +99,18 @@ impl AlbumGrid {
             albums: albums.into_iter().collect(),
             playback,
             on_context: None,
+            on_move: None,
         }
+    }
+
+    /// Lets a card the grid accepts be dragged onto another, to take its place.
+    pub(crate) fn on_move(
+        mut self,
+        accepts: impl Fn(&str) -> bool + 'static,
+        moved: impl Fn(String, usize, &mut App) + 'static,
+    ) -> Self {
+        self.on_move = Some((Rc::new(accepts), Rc::new(moved)));
+        self
     }
 
     pub(crate) fn on_context(
@@ -115,9 +130,27 @@ impl RenderOnce for AlbumGrid {
             albums,
             playback,
             on_context,
+            on_move,
         } = self;
         let cards = albums.into_iter().map(|(index, album)| {
             let card = album_card(id, index, &album, &playback, layout.card, cx);
+            let card = match on_move.clone() {
+                Some((accepts, moved)) => {
+                    let landing = accepts.clone();
+                    card.drag_over::<DraggedPin>(move |style, dragged, _, _| {
+                        match landing(&dragged.pin.id) {
+                            true => style.opacity(LANDING),
+                            false => style,
+                        }
+                    })
+                    .on_drop(move |dragged: &DraggedPin, _, cx| {
+                        if accepts(&dragged.pin.id) {
+                            moved(dragged.pin.id.clone(), index, cx);
+                        }
+                    })
+                }
+                None => card,
+            };
             let Some(listener) = on_context.clone() else {
                 return card.into_any_element();
             };

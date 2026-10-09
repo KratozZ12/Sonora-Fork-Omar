@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Div, Entity, Hsla, MouseButton, Pixels, SharedString, Stateful, Task,
-    Window, div, px, svg,
+    Window, div, px, relative, svg,
 };
 use i18n::t;
 use music::{ArtistRef, Contributor};
@@ -13,7 +13,7 @@ use router::{Destination, Link as _, navigate};
 use state::{Playback, PlaybackState};
 use ui::{
     ActiveTheme as _, Artwork, Avatar, Cell, ExplicitBadge, InlineLink, InlineLinks, ROW_GROUP,
-    Theme,
+    Text, Theme,
 };
 
 use crate::chrome::Chrome;
@@ -25,6 +25,10 @@ const PAUSE: &str = "icons/pause.svg";
 const UNAVAILABLE: &str = "icons/play-off.svg";
 const HOVER_PRELOAD_DELAY: Duration = Duration::from_millis(200);
 const PERSON: &str = "icons/user.svg";
+// Leading for a row that carries two lines, as a share of its text size. The
+// table gives a row 2.4 lines of height, and a title over its artists at this
+// leading comes to 2.31 of them, so the pair still fits at any base font size.
+const LEADING: f32 = 1.25;
 
 pub(crate) type Tap = Box<dyn Fn(&mut App)>;
 
@@ -342,6 +346,12 @@ pub(crate) fn count(value: u64) -> SharedString {
     SharedString::from(grouped)
 }
 
+/// The title of a track, optionally carrying its artists on a second line.
+///
+/// A row is one line tall until `under` is given, and then it is two: the title
+/// keeps the weight and the colour, the artists sit below it smaller and dimmer.
+/// The row does not grow to fit them — both lines are set to a leading that
+/// leaves them inside the height the table already reserves.
 pub(crate) fn title<F>(
     cell: &Cell<F>,
     value: impl Into<SharedString>,
@@ -349,6 +359,8 @@ pub(crate) fn title<F>(
     explicit: bool,
     press: Option<Tap>,
     is_liked: Option<AnyElement>,
+    under: Option<AnyElement>,
+    cx: &App,
 ) -> AnyElement {
     let text = div()
         .id(("track-title", cell.row))
@@ -364,15 +376,68 @@ pub(crate) fn title<F>(
                 })
         });
 
-    line(cell, color)
+    let named = div()
         .flex()
         .items_center()
         .gap_1p5()
+        .min_w_0()
         .child(text)
         .when(explicit, |this| {
             this.child(div().flex_none().child(ExplicitBadge::new()))
         })
-        .when_some(is_liked, |this, is_liked| this.child(is_liked))
+        .when_some(is_liked, |this, is_liked| this.child(is_liked));
+
+    let Some(under) = under else {
+        return line(cell, color)
+            .flex()
+            .items_center()
+            .child(named)
+            .into_any_element();
+    };
+
+    let theme = cx.theme();
+
+    cell.middle()
+        .when_some(color, |this, color| this.text_color(color))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .w_full()
+                .justify_center()
+                .line_height(relative(LEADING))
+                .child(named)
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(theme.text(Text::Small))
+                        .text_color(theme.muted_foreground)
+                        .child(under),
+                ),
+        )
+        .into_any_element()
+}
+
+/// A value at the end of a row, with a button sitting after it.
+///
+/// The value keeps the width it would have had on its own and the button is
+/// laid over the room to its right, so rows with a button and rows without one
+/// still line their numbers up.
+pub(crate) fn trailing<F>(
+    cell: &Cell<F>,
+    value: impl Into<SharedString>,
+    muted: Hsla,
+    button: AnyElement,
+) -> AnyElement {
+    line(cell, Some(muted))
+        .flex()
+        .items_center()
+        .justify_end()
+        .gap_1()
+        .child(div().min_w_0().truncate().child(value.into()))
+        .child(div().flex_none().child(button))
         .into_any_element()
 }
 

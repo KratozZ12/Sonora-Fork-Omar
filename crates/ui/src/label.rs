@@ -1,6 +1,7 @@
 use gpui::prelude::*;
 use gpui::{App, Div, FontWeight, SharedString, div};
 
+use crate::Faced as _;
 use crate::metrics::Text;
 use crate::theme::ActiveTheme as _;
 
@@ -41,6 +42,7 @@ pub fn heading(label: impl Into<SharedString>, cx: &App) -> Div {
     div()
         .flex_none()
         .text_size(cx.theme().text(Text::Title))
+        .face(crate::Face::Rounded)
         .font_weight(FontWeight::SEMIBOLD)
         .child(label.into())
 }

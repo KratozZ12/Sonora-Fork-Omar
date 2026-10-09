@@ -2,10 +2,11 @@ use gpui::{App, ClickEvent, ClipboardItem, Entity, SharedString, Styled as _, Wi
 use i18n::t;
 use music::{Album, MediaKind, Playlist, SavedArtist, Track};
 use router::{Destination, navigate};
-use state::{Detail, History, Library, LibraryState, Origin, Playback, Sonora};
+use state::{Detail, History, Library, LibraryState, Origin, Playback, Sonora, Stock};
 use ui::{Menu, MenuItem, Pin, PinKind, Scrollbar, SubmenuState};
 
 use crate::shared::confirm::Confirm;
+use crate::shared::grafter::Grafter;
 use crate::shared::playlist_editor::{Edit, PlaylistEditor};
 use crate::shared::tag_editor::TagEditor;
 
@@ -412,6 +413,39 @@ impl ItemMenu {
                 .icon("icons/pencil.svg")
                 .on_click(move |_, window, cx| TagEditor::open(track.clone(), window, cx))
         });
+        let graft = (!many && imported)
+            .then(|| track.id.clone())
+            .flatten()
+            .map(|id| {
+                let name = track.name.clone();
+                let artist = lead(&track.artists);
+                MenuItem::new("graft-track", t!("menu-add-to-album"))
+                    .icon("icons/disc-3.svg")
+                    .on_click(move |_, window, cx| {
+                        Grafter::open(
+                            Stock::Tracklist,
+                            id.clone(),
+                            name.clone(),
+                            artist.clone(),
+                            window,
+                            cx,
+                        )
+                    })
+            });
+        let ungraft = current_album
+            .filter(|album| !many && imported && !music::is_local_id(album))
+            .zip(track.id.clone())
+            .map(|(album, id)| {
+                let album = album.to_owned();
+                MenuItem::new("ungraft-track", t!("menu-remove-from-album"))
+                    .icon("icons/x.svg")
+                    .on_click(move |_, _, cx| {
+                        let settings = Sonora::global(cx).settings.clone();
+                        settings.update(cx, |settings, cx| {
+                            settings.ungraft(Stock::Tracklist, &album, &id, cx)
+                        });
+                    })
+            });
 
         let add_to_playlist = (!barren).then(|| {
             MenuItem::new(
@@ -437,6 +471,7 @@ impl ItemMenu {
                 [next, queue].into_iter().chain(radio).collect(),
                 album.into_iter().chain(artist).collect(),
                 details.into_iter().chain(edit).chain(copy).collect(),
+                graft.into_iter().chain(ungraft).collect(),
                 trailing.into_iter().collect(),
             ],
         )
@@ -569,7 +604,24 @@ pub(crate) fn album_menu(
                         queueing.update(cx, |playback, cx| playback.enqueue_album(&queued, cx));
                     }),
             ],
-            vec![album_library_item(album, cx)],
+            vec![album_library_item(album.clone(), cx)]
+                .into_iter()
+                .chain(music::is_local_id(&album.id).then(|| {
+                    let grafted = album.clone();
+                    MenuItem::new("graft-album", t!("menu-add-to-discography"))
+                        .icon("icons/user-round.svg")
+                        .on_click(move |_, window, cx| {
+                            Grafter::open(
+                                Stock::Discography,
+                                grafted.id.clone(),
+                                grafted.name.clone(),
+                                lead(&grafted.artists),
+                                window,
+                                cx,
+                            )
+                        })
+                }))
+                .collect(),
             vec![
                 MenuItem::new("copy-album-link", t!("menu-copy-link"))
                     .icon("icons/link.svg")
@@ -1025,4 +1077,14 @@ pub(crate) fn new_playlist_menu(
             .icon("icons/plus.svg")
             .on_click(on_create),
     )
+}
+
+// the first of a joined artist list
+fn lead(artists: &str) -> String {
+    artists
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
 }

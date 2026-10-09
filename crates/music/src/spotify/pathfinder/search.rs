@@ -263,13 +263,14 @@ fn artists(artists: Artists) -> (String, Vec<ArtistRef>) {
 }
 
 fn cover(sources: &[Image], large: bool) -> Option<String> {
+    let biggest = sources.iter().max_by_key(height);
     let source = match large {
-        true => sources
+        true => biggest,
+        false => sources
             .iter()
             .filter(|source| height(source) >= HEADER)
             .min_by_key(height)
-            .or_else(|| sources.iter().max_by_key(height)),
-        false => sources.iter().min_by_key(height),
+            .or(biggest),
     }?;
     (!source.url.is_empty()).then(|| source.url.clone())
 }

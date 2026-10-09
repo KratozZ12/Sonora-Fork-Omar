@@ -5,6 +5,7 @@ use gpui::{
 };
 use i18n::t;
 use state::{AppSettings, GenreDetails, Playback, Sonora};
+use ui::Faced as _;
 use ui::{ActiveTheme as _, Mode, Popovers, Scrollbar, Scroller, Skeleton, Text, vacant};
 
 use crate::chrome::{Chrome, Toolbar, Tooled, tools};
@@ -117,6 +118,7 @@ impl Render for GenreView {
                     .child(
                         div()
                             .text_size(theme.text(Text::Display))
+                            .face(ui::Face::Rounded)
                             .font_weight(FontWeight::BOLD)
                             .child(SharedString::from(title)),
                     )

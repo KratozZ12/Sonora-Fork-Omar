@@ -187,18 +187,18 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 }
 
 fn cover_url(album: &AlbumMessage) -> Option<String> {
-    let smallest = album
+    let picked = album
         .cover_group
         .as_ref()?
         .image
         .iter()
         .filter(|image| image.has_file_id())
         .min_by_key(|image| match image.size() {
-            ImageSize::SMALL => 0,
-            ImageSize::DEFAULT => 1,
-            ImageSize::LARGE => 2,
-            ImageSize::XLARGE => 3,
+            ImageSize::DEFAULT => 0,
+            ImageSize::LARGE => 1,
+            ImageSize::XLARGE => 2,
+            ImageSize::SMALL => 3,
         })?;
 
-    wire::image_url(smallest.file_id())
+    wire::image_url(picked.file_id())
 }

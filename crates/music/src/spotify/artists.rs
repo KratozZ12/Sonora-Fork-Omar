@@ -74,6 +74,7 @@ async fn overview_artist(
             .map(|biography| plain_text(&biography))
             .filter(|biography| !biography.is_empty()),
         monthly_listeners: overview.monthly_listeners,
+        related: overview.related,
         top_tracks,
         albums,
     })
@@ -266,9 +267,12 @@ async fn cards(session: &Session, ids: &[String]) -> Result<HashMap<String, Save
             let Some(id) = entity.entity_uri.strip_prefix(ARTIST_PREFIX) else {
                 continue;
             };
-            let smallest = portraits(&message)
-                .into_iter()
-                .min_by_key(|image| image_width(image));
+            let portraits = portraits(&message);
+            let picked = portraits
+                .iter()
+                .filter(|image| image_width(image) >= LARGE_PORTRAIT)
+                .min_by_key(|image| image_width(image))
+                .or_else(|| portraits.iter().max_by_key(|image| image_width(image)));
 
             found.insert(
                 id.to_owned(),
@@ -278,7 +282,7 @@ async fn cards(session: &Session, ids: &[String]) -> Result<HashMap<String, Save
                         "" => UNKNOWN.to_owned(),
                         name => name.to_owned(),
                     },
-                    cover: smallest.and_then(|image| wire::image_url(image.file_id())),
+                    cover: picked.and_then(|image| wire::image_url(image.file_id())),
                     added_at: None,
                 },
             );
@@ -296,6 +300,7 @@ fn artist_from(artist: &ArtistMessage, top_tracks: Vec<Track>, albums: Vec<Album
         cover_large: profile.cover_large,
         biography: profile.biography,
         monthly_listeners: None,
+        related: Vec::new(),
         top_tracks,
         albums,
     }
@@ -308,9 +313,7 @@ fn profile_from(artist: &ArtistMessage) -> ArtistProfile {
         name: artist.name().to_owned(),
         cover_large: portraits
             .iter()
-            .filter(|image| image_width(image) >= LARGE_PORTRAIT)
-            .min_by_key(|image| image_width(image))
-            .or_else(|| portraits.iter().max_by_key(|image| image_width(image)))
+            .max_by_key(|image| image_width(image))
             .and_then(|image| wire::image_url(image.file_id())),
         biography: artist.biography.iter().find_map(|bio| {
             bio.text
